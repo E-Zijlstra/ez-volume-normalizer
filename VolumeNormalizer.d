@@ -28,15 +28,22 @@ import gtk.ComboBoxText;
 import util;
 import worker;
 import vumeter;
+import distributionmeter;
 
 //version=decibels;
 import core.runtime;
 import core.sys.windows.windows;
 import std.string;
 
+// oncycle=ignore: if not ignored static constructors will trigger module dependency cycles
+extern(C) __gshared string[] rt_options = [ "oncycle=ignore", "testmode=run-main" ];
+
+
 debug {
 	int main(string[] args) {
 		main_(args);
+		//readln();
+
 		return 0;
 	}
 }
@@ -77,8 +84,8 @@ class UI {
 	Button button;
 	Switch uiEnable;
 	Label uiDeviceInfo;
-	LevelBar uiPeakHold;
-	LevelBar uiPeakMax;
+	Image distributionMeterImg;
+	DistributionMeter distributionMeter;
 	Scale uiTargetLevel;
 	SpinButton uiLimiterStart;
 	SpinButton uiLimiterWidth;
@@ -151,11 +158,13 @@ class UI {
 
 			frame.add(uiSignalVuImg = new Image());
 			uiSignalVu = new VuMeter(vleftWidth - 38, vuMeterHeight );
-			uiSignalVuImg.setFromPixbuf(uiSignalVu.pixbuf);
 			uiSignalVu.paint(0, worker.limitOutputStart, worker.limitOutputEnd);
+			uiSignalVuImg.setFromPixbuf(uiSignalVu.pixbuf);
 
-			frame.add(uiPeakHold = levelMeter());
-			frame.add(uiPeakMax = levelMeter());
+			frame.add(distributionMeterImg = new Image());
+			distributionMeter = new DistributionMeter(vleftWidth - 38, 20, worker.levelDistribution);
+			distributionMeter.paint(worker.levelDistribution.loudness);
+			distributionMeterImg.setFromPixbuf(distributionMeter.pixbuf);
 		}
 
 		{
@@ -316,9 +325,8 @@ class UI {
 		uiSignalVu.paint(v, worker.limitSignalStart, worker.limitSignalEnd);
 		uiSignalVuImg.setFromPixbuf(uiSignalVu.pixbuf);
 
-
-		uiPeakHold.setValue(worker.peakMax);
-		uiPeakMax.setValue(worker.peakMaxTrue);
+		distributionMeter.paint(worker.levelDistribution.loudness);
+		distributionMeterImg.setFromPixbuf(distributionMeter.pixbuf);
 
 		uiMasterVolume.setValue(worker.volume);
 

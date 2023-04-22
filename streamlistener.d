@@ -104,9 +104,14 @@ struct StreamListener {
 
 		// Start recording
 		audioClient.Start();
-
+		info("listening");
 		float[] dummy;
-		blockProcessor(dummy, 0);
+		try {
+			blockProcessor(dummy, 0);
+		}
+		catch(Error e) {
+			info(e.message);
+		}
 
 		uint numFramesAvailable = 0;
 		int sleepUs = 5;

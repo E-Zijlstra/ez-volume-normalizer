@@ -21,7 +21,7 @@ struct RGBA {
 		this.b = b_;
 	}
 	// multiply by a float
-	RGBA opBinary(string op : "*")(float f) {
+	RGBA opBinary(string op : "*")(float f) const {
 		return RGBA(
 			cast(ubyte)(r*f),
 			cast(ubyte)(g*f),

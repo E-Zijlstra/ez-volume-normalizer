@@ -9,20 +9,16 @@ import core.time;
 import gdkpixbuf.Pixbuf;
 
 import util;
+import vumeterbase;
 
-
-class VuMeter {
-	bool enableRaster = true;
-	bool enableFade = true;
+class VuMeter : VuMeterBase {
+	bool enableRaster = true; // enables the raster like spacing between LEDs
+	bool enableFade = true;   // enables the fading to the background color, making it easier to see the level
 	bool enablePeak = true;
 
 	this(int width, int height) {
-		mPixbuf = new Pixbuf(GdkColorspace.RGB, true, 8, width, height);
-		this.mWidth = width;
-		this.mHeight = height;
+		super(width, height);
 	}
-
-	@property Pixbuf pixbuf() { return mPixbuf; }
 
 	void paint(float level, float orangeLevel, float redLevel) {
 		paintLevel(level, orangeLevel, redLevel);
@@ -31,9 +27,6 @@ class VuMeter {
 
 
 private:
-	Pixbuf mPixbuf;
-	int mWidth, mHeight;
-
 	double peak = 0;
 	const peakHoldTime = dur!"msecs"(5000);
 	const peakDecayPerSec = 0.2;
@@ -45,6 +38,7 @@ private:
 	enum RGBA red =    RGBA(255, 0,0);
 	enum RGBA blank =  RGBA(0,0,0);
 
+	// background colors
 	enum RGBA bgGreen =   RGBA(0,   0xe0, 0    ) * 0.25;
 	enum RGBA bgOrange =  RGBA(255, 0x80, 0x40 ) * 0.30;
 	enum RGBA bgRed =     RGBA(255, 0,    0    ) * 0.25;
@@ -54,20 +48,20 @@ private:
 	enum RGBA spOrange =  RGBA(255, 0x80, 0x40 ) * 0.83;
 	enum RGBA spRed =     RGBA(255, 0,    0    ) * 0.83;
 
-	void paintLevel(float vol, float lim, float lim2) {
+	void paintLevel(float vol, float orangeLevel, float redLevel) {
 		vol = min(1,vol);
-		lim = min(1,lim);
-		lim2 = min(1,lim2);
+		orangeLevel = min(1,orangeLevel);
+		redLevel = min(1,redLevel);
 
 		// pixel to start the color on
-		int xVol = cast(int) ceil(vol * mWidth);
-		int xOrange = cast(int) floor(lim * mWidth);
-		int xRed = cast(int) floor(lim2 * mWidth);
+		int xVol = levelToPixel(vol); //cast(int) ceil(vol * mWidth);
+		int xOrange = levelToPixel(orangeLevel); //cast(int) floor(orangeLevel * mWidth);
+		int xRed = levelToPixel(redLevel); //cast(int) floor(redLevel * mWidth);
 		int xEnd = mWidth;
 
 		// clear/fade to background color
 		void delegate(int, int, RGBA) clearFunction;
-		clearFunction = enableFade ? &fadeToColor : &fill;
+		clearFunction = enableFade ? &fadeToColor : &paintBlock;
 		clearFunction(0, xOrange, bgGreen);
 		clearFunction(xOrange, xRed, bgOrange);
 		clearFunction(xRed, mWidth, bgRed);
@@ -79,13 +73,14 @@ private:
 			fillLeds(xRed, min(xEnd, xVol), red, spRed);
 		}
 		else {
-			fill(0, min(xOrange, xVol), green);
-			fill(xOrange, min(xRed, xVol), orange);
-			fill(xRed, min(xEnd, xVol), red);
+			paintBlock(0, min(xOrange, xVol), green);
+			paintBlock(xOrange, min(xRed, xVol), orange);
+			paintBlock(xRed, min(xEnd, xVol), red);
 		}
 	}
 
-	void paintPeak(float vol, float lim, float lim2) {
+
+	void paintPeak(float vol, float orangeLevel, float redLevel) {
 		auto t = MonoTime.currTime;
 		auto timePassed = t - tLastPeakPaint;
 		tLastPeakPaint = t;
@@ -107,9 +102,9 @@ private:
 
 		if (peak > 0.001) {
 			RGBA col = green;
-			if (peak > lim)  { col = orange; }
-			if (peak > lim2) { col = red; }
-			paintVerticalBar(cast(int) max(1,ceil(peak * mWidth)), col);
+			if (peak > orangeLevel)  { col = orange; }
+			if (peak > redLevel) { col = red; }
+			paintVerticalLine(cast(int) max(1,ceil(peak * mWidth)), col);
 		}
 	}
 
@@ -134,25 +129,6 @@ private:
 		}
 	}
 
-	void fill(int begin, int end, RGBA rgba_) {
-		uint rgba = rgba_.toAbgr;
-		int stride = mPixbuf.getRowstride() /4;
-		char[] cdata = mPixbuf.getPixelsWithLength();
-		uint[] data = cast(uint[]) cdata;  // assuming rgba format ... (!)
-
-		int idx = 0;
-		foreach(y; 0..mHeight) {
-			idx = y * stride + begin;
-			foreach(x; begin .. end) {
-				data[idx++] = rgba;
-			}
-		}
-	}
-
-	void paintVerticalBar(int x, RGBA rgba_) {
-		fill(x,x+1,rgba_);
-	}
-
 	void fadeToColor(int begin, int end, RGBA rgba) {
 		int stride = mPixbuf.getRowstride();
 		char[] cdata = mPixbuf.getPixelsWithLength();
@@ -162,9 +138,9 @@ private:
 		foreach(y; 0..mHeight) {
 			idx = y * stride + begin*4;
 			foreach(x; begin .. end) {
-				data[idx] = cast(ubyte) max(rgba.r, data[idx++]-30);
-				data[idx] = cast(ubyte) max(rgba.g, data[idx++]-32);
-				data[idx] = cast(ubyte) max(rgba.b, data[idx++]-28);
+				data[idx] = cast(ubyte) max(rgba.r, data[idx]-30); idx++;
+				data[idx] = cast(ubyte) max(rgba.g, data[idx]-32); idx++;
+				data[idx] = cast(ubyte) max(rgba.b, data[idx]-28); idx++;
 				data[idx++] = 0xff; //a
 			}
 		}

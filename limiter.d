@@ -31,7 +31,7 @@ class Limiter {
 		signalHistory.length = 4;
 	}
 
-	void process(float prevInputSignal, float inputSignal) {
+	void process(float inputSignal) {
 		signalHistory[signalHistoryIdx++] = inputSignal;
 		if (signalHistoryIdx >= signalHistory.length) signalHistoryIdx = 0;
 

@@ -34,7 +34,7 @@
   <useArrayBounds>0</useArrayBounds>
   <boundscheck>0</boundscheck>
   <useSwitchError>0</useSwitchError>
-  <useUnitTests>0</useUnitTests>
+  <useUnitTests>1</useUnitTests>
   <useInline>0</useInline>
   <release>0</release>
   <preservePaths>0</preservePaths>
@@ -505,6 +505,8 @@
    <File path="doc\controls.png" />
    <File path="doc\gtk-build-from-git-bash.sh" />
   </Folder>
+  <File path="distributionmeter.d" />
+  <File path="leveldistribution.d" />
   <File path="LICENSE.md" />
   <File path="limiter.d" />
   <File path="README.md" />
@@ -512,6 +514,7 @@
   <File path="util.d" />
   <File path="VolumeNormalizer.d" />
   <File path="vumeter.d" />
+  <File path="vumeterbase.d" />
   <File path="windows.d" />
   <File path="worker.d" />
  </Folder>
