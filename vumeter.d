@@ -20,43 +20,13 @@ class VuMeter {
 		mPixbuf = new Pixbuf(GdkColorspace.RGB, true, 8, width, height);
 		this.mWidth = width;
 		this.mHeight = height;
-
 	}
 
 	@property Pixbuf pixbuf() { return mPixbuf; }
 
-	void paint(float vol, float lim, float lim2) {
-		paintLevel(vol, lim, lim2);
-		paintPeak(vol, lim, lim2);
-	}
-
-	void paintPeak(float vol, float lim, float lim2) {
-		auto tSinceSet = MonoTime.currTime - peakSetAt;
-
-		if (vol > peak) {
-			peakDecaying = false;
-			peak = vol;
-			peakSetAt = MonoTime.currTime;
-		}
-		else if (!peakDecaying && tSinceSet > peakHoldTime) {
-			// switch to decay
-			peakDecaying = true;
-			peakSetAt = MonoTime.currTime;
-		}
-		else if (peakDecaying) {
-			long msPassed = tSinceSet.total!"msecs";
-			float step = peakDecayPerSec * msPassed / 1000f;
-			peak = max(0, peak - step);
-			peakSetAt = MonoTime.currTime;
-		}
-
-		if (peak > 0.01) {
-			uint col = green;
-			uint rcol = rgreen;
-			if (peak > lim)  { col = orange; rcol = rorange; }
-			if (peak > lim2) { col = red; rcol = rred; }
-			paintVerticalBar(cast(int) max(1,ceil(peak * mWidth)), col, rcol);
-		}
+	void paint(float level, float orangeLevel, float redLevel) {
+		paintLevel(level, orangeLevel, redLevel);
+		paintPeak(level, orangeLevel, redLevel);
 	}
 
 
@@ -67,76 +37,85 @@ private:
 	double peak = 0;
 	const peakHoldTime = dur!"msecs"(5000);
 	const peakDecayPerSec = 0.2;
-	MonoTime peakSetAt;
+	MonoTime tLastPeakPaint, tLastPeakBump;
 	bool peakDecaying;
 
-	enum uint green = rgba(0,0xe0, 0);
-	enum uint orange = rgba(255, 0x80, 0x40);
-	enum uint red = rgba(255,0,0);
-	enum uint blank = 0x000000ff;
+	enum RGBA green =  RGBA(  0, 0xe0, 0);
+	enum RGBA orange = RGBA(255, 0x80, 0x40);
+	enum RGBA red =    RGBA(255, 0,0);
+	enum RGBA blank =  RGBA(0,0,0);
 
-	enum uint hgreen =   rgba(0,   0xe0, 0,    0.25);
-	enum uint horange =  rgba(255, 0x80, 0x40, 0.30);
-	enum uint hred =     rgba(255, 0,    0,    0.25);
+	enum RGBA bgGreen =   RGBA(0,   0xe0, 0    ) * 0.25;
+	enum RGBA bgOrange =  RGBA(255, 0x80, 0x40 ) * 0.30;
+	enum RGBA bgRed =     RGBA(255, 0,    0    ) * 0.25;
 
-	enum uint rgreen =   rgba(0,   0xe0, 0,    0.75);
-	enum uint rorange =  rgba(255, 0x80, 0x40, 0.75);
-	enum uint rred =     rgba(255, 0,    0,    0.75);
-	const uint hblank =  0x000000ff;
+	// color for the space between the leds
+	enum RGBA spGreen =   RGBA(0,   0xe0, 0    ) * 0.83;
+	enum RGBA spOrange =  RGBA(255, 0x80, 0x40 ) * 0.83;
+	enum RGBA spRed =     RGBA(255, 0,    0    ) * 0.83;
 
 	void paintLevel(float vol, float lim, float lim2) {
 		vol = min(1,vol);
 		lim = min(1,lim);
 		lim2 = min(1,lim2);
 
-		// pixel to start the color on (exclusive)
+		// pixel to start the color on
 		int xVol = cast(int) ceil(vol * mWidth);
 		int xOrange = cast(int) floor(lim * mWidth);
 		int xRed = cast(int) floor(lim2 * mWidth);
 		int xEnd = mWidth;
 
-		////clear
-		if (enableFade) {
-			fillAndFade(0, xOrange, hgreen);
-			fillAndFade(xOrange, xRed, horange);
-			fillAndFade(xRed, mWidth, hred);
+		// clear/fade to background color
+		void delegate(int, int, RGBA) clearFunction;
+		clearFunction = enableFade ? &fadeToColor : &fill;
+		clearFunction(0, xOrange, bgGreen);
+		clearFunction(xOrange, xRed, bgOrange);
+		clearFunction(xRed, mWidth, bgRed);
 
+		// paint the level bar
+		if (enableRaster) {
+			fillLeds(0, min(xOrange, xVol), green, spGreen);
+			fillLeds(xOrange, min(xRed, xVol), orange, spOrange);
+			fillLeds(xRed, min(xEnd, xVol), red, spRed);
 		}
 		else {
-			fillPlain(0, xOrange, hgreen);
-			fillPlain(xOrange, xRed, horange);
-			fillPlain(xRed, mWidth, hred);
+			fill(0, min(xOrange, xVol), green);
+			fill(xOrange, min(xRed, xVol), orange);
+			fill(xRed, min(xEnd, xVol), red);
 		}
-		//fade();
-
-		// fill
-		if (xVol < xOrange) {
-			fill(0, xVol, green, rgreen);
-		}
-		else if (xVol < xRed) {
-			fill(0, xOrange, green, rgreen);
-			fill(xOrange, xVol, orange, rorange);
-		}
-		else {
-			fill(0, xOrange, green, rgreen);
-			fill(xOrange, xRed, orange, rorange);
-			fill(xRed, xVol, red, rred);
-		}
-
-		// clear
-//		fill(xVol+1, xEnd, blank);
 	}
 
-	void fill(int begin, int end, uint rgba_, uint rasterColor_) {
-		if (enableRaster)
-			fillRaster(begin, end, rgba_, rasterColor_);
-		else
-			fillPlain(begin, end, rgba_);
+	void paintPeak(float vol, float lim, float lim2) {
+		auto t = MonoTime.currTime;
+		auto timePassed = t - tLastPeakPaint;
+		tLastPeakPaint = t;
+
+		if (vol > peak) {
+			peakDecaying = false;
+			peak = vol;
+			tLastPeakBump = t;
+		}
+		else if (!peakDecaying && (t-tLastPeakBump > peakHoldTime)) {
+			peakDecaying = true;
+		}
+
+		if (peakDecaying) {
+			long msPassed = timePassed.total!"msecs";
+			float step = peakDecayPerSec * msPassed / 1000f;
+			peak = max(0, peak - step);
+		}
+
+		if (peak > 0.001) {
+			RGBA col = green;
+			if (peak > lim)  { col = orange; }
+			if (peak > lim2) { col = red; }
+			paintVerticalBar(cast(int) max(1,ceil(peak * mWidth)), col);
+		}
 	}
 
-	void fillRaster(int begin, int end, uint rgba_, uint rasterColor_) {
-		uint rgba = swapEndian(rgba_);
-		uint rasterColor = swapEndian(rasterColor_);
+	void fillLeds(int begin, int end, RGBA rgba_, RGBA rasterColor_) {
+		uint rgba = rgba_.toAbgr;
+		uint rasterColor = rasterColor_.toAbgr;
 		int stride = mPixbuf.getRowstride() /4;
 		char[] cdata = mPixbuf.getPixelsWithLength();
 		uint[] data = cast(uint[]) cdata;  // assuming rgba format ... (!)
@@ -144,9 +123,9 @@ private:
 		int idx = 0;
 		foreach(y; 0..mHeight) {
 			idx = y * stride + begin;
-			bool raster = (y&3)==3;
+			bool raster = false; //(y&3)==3;
 			foreach(x; begin .. end) {
-				if ( raster || (x & 0x07) == 0x7)
+				if ( raster || (x & 0x02) == 0x2)
 					data[idx] = rasterColor;
 				else
 					data[idx] = rgba;
@@ -155,9 +134,8 @@ private:
 		}
 	}
 
-
-	void fillPlain(int begin, int end, uint rgba_) {
-		uint rgba = swapEndian(rgba_);
+	void fill(int begin, int end, RGBA rgba_) {
+		uint rgba = rgba_.toAbgr;
 		int stride = mPixbuf.getRowstride() /4;
 		char[] cdata = mPixbuf.getPixelsWithLength();
 		uint[] data = cast(uint[]) cdata;  // assuming rgba format ... (!)
@@ -171,58 +149,24 @@ private:
 		}
 	}
 
-	void paintVerticalBar(int x, uint rgba_, uint rcol_) {
-		fill(x,x+1,rgba_, rcol_);
-		//uint rgba = swapEndian(rgba_);
-		//int stride = mPixbuf.getRowstride() /4;
-		//char[] cdata = mPixbuf.getPixelsWithLength();
-		//uint[] data = cast(uint[]) cdata;  // assuming rgba format ... (!)
-		//
-		//foreach(y; 0..mHeight) {
-		//    size_t idx = y * stride + x;
-		//    data[idx] = rgba;
-		//}
+	void paintVerticalBar(int x, RGBA rgba_) {
+		fill(x,x+1,rgba_);
 	}
 
-	void fillAndFade(int begin, int end, uint rgba_) {
-		uint rgba = swapEndian(rgba_);
+	void fadeToColor(int begin, int end, RGBA rgba) {
 		int stride = mPixbuf.getRowstride();
 		char[] cdata = mPixbuf.getPixelsWithLength();
 		ubyte[] data = cast(ubyte[]) cdata;  // assuming rgba format ... (!)
-
-		ubyte r = (rgba_ >> 24) & 0xff;
-		ubyte g = (rgba_ >> 16) & 0xff;
-		ubyte b = (rgba_ >>  8) & 0xff;
 
 		int idx = 0;
 		foreach(y; 0..mHeight) {
 			idx = y * stride + begin*4;
 			foreach(x; begin .. end) {
-				data[idx] = cast(ubyte) max(r, data[idx]-30); idx++;
-				data[idx] = cast(ubyte) max(g, data[idx]-32); idx++;
-				data[idx] = cast(ubyte) max(b, data[idx]-28); idx++;
+				data[idx] = cast(ubyte) max(rgba.r, data[idx++]-30);
+				data[idx] = cast(ubyte) max(rgba.g, data[idx++]-32);
+				data[idx] = cast(ubyte) max(rgba.b, data[idx++]-28);
 				data[idx++] = 0xff; //a
 			}
 		}
 	}
-
-	void fade() {
-		char[] cdata = mPixbuf.getPixelsWithLength();
-		ubyte[] data = cast(ubyte[]) cdata;  // assuming rgba format ... (!)
-		int stride = mPixbuf.getRowstride();
-		int idx;
-
-		foreach(y; 0..mHeight) {
-			idx = y * stride;
-			foreach(x; 0 .. mWidth) {
-				// ABGR
-				data[idx] = cast(ubyte) max(0, data[idx]-30); idx++;
-				data[idx] = cast(ubyte) max(0, data[idx]-32); idx++;
-				data[idx] = cast(ubyte) max(0, data[idx]-28); idx++;
-				idx++;
-			}
-		}
-
-	}
-
 }

@@ -69,6 +69,7 @@ int main_(string[] args) {
 }
 
 class UI {
+	const int vuMeterHeight = 20;
 	MainWindow win;
 	Image   uiSignalVuImg;
 	VuMeter uiSignalVu;
@@ -149,7 +150,7 @@ class UI {
 			Box frame = addFrame(vleft, "input / peaks");
 
 			frame.add(uiSignalVuImg = new Image());
-			uiSignalVu = new VuMeter(vleftWidth - 38, 23);
+			uiSignalVu = new VuMeter(vleftWidth - 38, vuMeterHeight );
 			uiSignalVuImg.setFromPixbuf(uiSignalVu.pixbuf);
 			uiSignalVu.paint(0, worker.limitOutputStart, worker.limitOutputEnd);
 
@@ -166,7 +167,7 @@ class UI {
 		{
 			Box frame = addSmallFrame(vleft, "output");
 			frame.add(uiOutputVuImg = new Image());
-			uiOutputVu = new VuMeter(vleftWidth - 38, 23);
+			uiOutputVu = new VuMeter(vleftWidth - 38, vuMeterHeight );
 			uiOutputVuImg.setFromPixbuf(uiOutputVu.pixbuf);
 			uiOutputVu.paint(0, worker.limitOutputStart, worker.limitOutputEndPreLimiter);
 		}
@@ -174,7 +175,7 @@ class UI {
 			Box frame = addSmallFrame(vleft, null, 10);
 
 			frame.add(uiOutputLimitedVuImg = new Image());
-			uiOutputLimitedVu = new VuMeter(vleftWidth - 38, 23);
+			uiOutputLimitedVu = new VuMeter(vleftWidth - 38, vuMeterHeight);
 			uiOutputLimitedVuImg.setFromPixbuf(uiOutputLimitedVu.pixbuf);
 			uiOutputLimitedVu.paint(0, worker.limitOutputStart, worker.limitOutputEnd);
 

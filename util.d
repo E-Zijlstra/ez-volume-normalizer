@@ -11,13 +11,41 @@ T clamp01(T)(T t) {
  }
 
 
-uint rgba(int r, int g, int b, float f = 1f) {
-	return
-		((cast(uint)(r*f)) << 24)
-		+ ((cast(uint)(g*f)) << 16)
-		+ ((cast(uint)(b*f)) << 8)
-		+ 0xff;
+struct RGBA {
+	ubyte r;
+	ubyte g;
+	ubyte b;
+	this(ubyte r_, ubyte g_, ubyte b_) {
+		this.r = r_;
+		this.g = g_;
+		this.b = b_;
+	}
+	// multiply by a float
+	RGBA opBinary(string op : "*")(float f) {
+		return RGBA(
+			cast(ubyte)(r*f),
+			cast(ubyte)(g*f),
+			cast(ubyte)(b*f)
+		);
+	}
+
+	uint toRgba() {
+		return
+			(r << 24)
+			+ (g << 16)
+			+ (b << 8)
+			+ 0xff;
+	}
+	uint toAbgr() {
+		return r
+			+ (g << 8)
+			+ (b << 16)
+			+ 0xff000000;
+	}
+
+	alias toRgba this;
 }
+
 
 // Access the array while wrapping around the edges
 T wrap(T)(T[] arr, int i) {
