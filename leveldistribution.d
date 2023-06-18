@@ -4,19 +4,26 @@ import core.time;
 import std.math;
 import std.algorithm;
 
-version=propagate;
-
 class LevelHistory {
 	float[] history;
+	float[] averages;
 	bool historyChanged = false;
 	float accumulator = 0f;
 	float avgLevel = 0f;
 	float maxLevel = 0f;
 
+	@property int writeIdx() {
+		return historyIdx;
+	}
+
+	@property size_t writtenIdx() {
+		return historyIdx == 0 ? history.length - 1 : historyIdx - 1;
+	}
+
 private:
-	int historyIdx = 0;
-	Duration bucketTime;
-	MonoTime nextBucketTime;
+	int historyIdx = 0;  // next write position in history
+	Duration sampleDuration;
+	MonoTime nextSampleTime;
 
 	// short term ring buffer for an accurate reading of the actual peak
 	enum peakBufferSize = 4;
@@ -25,29 +32,26 @@ private:
 	MonoTime nextPeakTime;
 
 public:
-	this(int numBuckets, int bucketTimeMs) {
-		history.length = numBuckets;
-		bucketTime = msecs(bucketTimeMs);
-		nextBucketTime = nextPeakTime = MonoTime.currTime;
+	this(int numSamples, int sampleDurationMs) {
+		history.length = numSamples;
+		averages.length = numSamples;
+		sampleDuration = msecs(sampleDurationMs);
+		nextSampleTime = nextPeakTime = MonoTime.currTime;
 		foreach(ref h; history) h = 0f;
 		foreach(ref h; peakBuffer) h = 0f;
+		foreach(ref h; averages) h = 0f;
 	}
 
-	//int samplesInBucket=0;
-	
 	void add(float level) {
 		accumulator = max(accumulator, level);
 
 		// archive the accumulator in the history
 		MonoTime now = MonoTime.currTime;
-		historyChanged = now > nextBucketTime;
-		//samplesInBucket++;
+		historyChanged = now > nextSampleTime;
 		if (historyChanged) {
-			history[historyIdx++] = accumulator;
-			if (historyIdx >= history.length) historyIdx = 0;
+			history[historyIdx] = accumulator;
 			accumulator = 0f;
-			nextBucketTime = now + bucketTime;
-			//samplesInBucket = 0;
+			nextSampleTime = now + sampleDuration;
 		}
 
 		// keep track of actual peak
@@ -63,9 +67,16 @@ public:
 		if (historyChanged) {
 			avgLevel = history.sum / history.length;
 			maxLevel = history.maxElement;
+			averages[historyIdx] = avgLevel;
+
+			historyIdx++;
+			if (historyIdx >= history.length) historyIdx = 0;
 		}
 	}
 
+	@property float lastWrittenSample() {
+		return history.wrap(historyIdx-1);
+	}
 
 	// max signal level in last 20 milliseconds
 	float currentPeak() {
@@ -76,90 +87,112 @@ public:
 
 // Divides the range of level values into N buckets.
 // It counts the number of hits in each bucket reached by the signal level.
-class LevelDistribution {
+final class LevelDistribution {
 	private {
+		LevelHistory history;
 		int numBuckets;
 		int[] buckets;
 		double bucketSize;
 		int bucketMaxHits = 0; // number of hits in the bucket with the most hits
 		float mLoudness = 0f;
-
-		float bucketLevel(int bucketIdx) {
-			return bucketIdx * bucketSize;
-		}
-
-		// returns -1 if level <= 0
-		int bucketIdx(float level) {
-			import std.math;
-			int b = (cast(int)(ceil(level / bucketSize))) -1;
-			return b < numBuckets ? b : numBuckets -1 ;
-		}
 	}
+	ubyte[] sampleClassifications;
+	float[] loudnesses;
 
-	size_t lowerBucketIdx;
-	size_t upperBucketIdx;
+	enum LOW = 1;
+	enum INCLUDED = 2;
+	enum HIGH = 3;
 
-	// ---
+	// range of levels used in the weighted average
+	float minIncludeLevel = 0f;
+	float maxIncludeLevel = 0f;
+	float maxLevel;
 
-	this(int numBuckets_) {
+	// ----------------
+
+	this(LevelHistory history_, int numBuckets_) {
+		history = history_;
 		numBuckets = numBuckets_;
 		buckets.length = numBuckets;
 		bucketSize = 1.0 / numBuckets;
+		sampleClassifications.length = history.history.length;
+		loudnesses.length = history.history.length;
 	}
 
-	void fillBuckets(LevelHistory history) {
-		float[] peakHistory = history.history;
+	void processArchivedSample() {
+		float[] samples = history.history;
 		foreach(ref bucket; buckets) bucket = 0;
 
 		// count for each buckets how many times it has been hit by the signal
-		float threshold = history.avgLevel;
-		real levelSum = 0;
+		float threshold = history.avgLevel*0.9;
 		bucketMaxHits = 0;
-		lowerBucketIdx = buckets.length - 1;
-		upperBucketIdx = 0;
-		float peakAvg = 0f;  // average of levels above peakThreshold
-		int peakCount = 0;
-
-		foreach(float level; peakHistory) {
-			if (level < threshold) continue;
+		int lowerBucketIdx = cast(int)(buckets.length - 1);
+		int upperBucketIdx = 0;
+		foreach(float level; samples) {
+			if (level < threshold) continue;	
 
 			int bucketIdx = bucketIdx(level);
 			if (bucketIdx >= 0) {
-				peakAvg += level;
-				peakCount++;
+				buckets[bucketIdx] = buckets[bucketIdx] + 1;
 				lowerBucketIdx = min(lowerBucketIdx, bucketIdx);
 				upperBucketIdx = max(upperBucketIdx, bucketIdx);
-				buckets[bucketIdx] = buckets[bucketIdx] + 1;
-				if (buckets[bucketIdx] > bucketMaxHits) bucketMaxHits = buckets[bucketIdx];
+				bucketMaxHits = max(bucketMaxHits, buckets[bucketIdx]);
 			}
 		}
-		if (peakCount > 0) peakAvg /= peakCount;
 
-		// empty history case
+		// when history is empty, use the average
 		if (lowerBucketIdx > upperBucketIdx) {
 			bucketMaxHits = 0;
 			mLoudness = history.avgLevel;
+			minIncludeLevel = 0f;
+			maxIncludeLevel = 1f;
 			return;
 		}
 
-		// propagate hits to lower buckets
+		// accumulate hits to lower buckets
 		bucketMaxHits = 0;
 		foreach_reverse(ref bucket; buckets[lowerBucketIdx .. upperBucketIdx+1]) {
 			bucketMaxHits += bucket;
 			bucket = bucketMaxHits;
 		}
 
-		// compute loudness
-		mLoudness = 0f;
-		int totalHits = 0;
-		int cutoffHits = cast(int) (bucketMaxHits * 0.30); // ignore the levels that are hit less than 75% 
+		// ignore levels that are hit less than 5% than the most hit level
+		int minHits = cast(int) (bucketMaxHits * 0.05);
+		int maxIncludeBucketIdx = 0;
 		foreach(i, ref hits; buckets[lowerBucketIdx .. upperBucketIdx+1]) {
-			if (hits > cutoffHits) {
-				totalHits += hits;
-				mLoudness += hits * levelByBucketIdx(i + lowerBucketIdx);
+			if (hits > minHits) {
+				int bucketIdx = cast(int)(i + lowerBucketIdx);
+				if (bucketIdx > maxIncludeBucketIdx) maxIncludeBucketIdx = bucketIdx;
 			}
 		}
-		mLoudness = mLoudness / totalHits;
+
+		// the new range to classify samples
+		minIncludeLevel = bucketLevel(lowerBucketIdx);
+		maxIncludeLevel = bucketLevel(maxIncludeBucketIdx+1);
+		maxLevel = bucketLevel(upperBucketIdx+1);
+
+		// classify the new sample
+		size_t lastSampleIdx = history.writtenIdx;
+		float s = samples[lastSampleIdx];
+		ubyte c = LOW;
+		if (s >= minIncludeLevel) c = INCLUDED;
+		if (s >= maxIncludeLevel) c = HIGH;
+		sampleClassifications[history.writtenIdx] = c;
+		loudnesses[history.writtenIdx] = mLoudness;
+
+
+		// compute loudness by weighted average of the included samples
+		mLoudness = 0f;
+		int totalHits = 0;
+		real acc = 0;
+		foreach(i, ubyte classification; sampleClassifications) {
+			if (classification == INCLUDED) {
+				totalHits++;
+				acc += samples[i];
+			}
+		}
+		if (totalHits == 0) totalHits = 1;
+		mLoudness = acc / totalHits;
 	}
 
 	@property float loudness() {
@@ -178,16 +211,28 @@ class LevelDistribution {
 		return buckets[bucketIdx] / (cast(float) bucketMaxHits + 0.00001);
 	}
 
-	float levelByBucketIdx(size_t idx) {
-		return idx * bucketSize;
+	float bucketLevel(size_t bucketIdx) {
+		return bucketIdx * bucketSize;
+	}
+
+	// returns -1 if level <= 0
+	int bucketIdx(float level) {
+		import std.math;
+		int b = (cast(int)(ceil(level / bucketSize))) -1;
+		return b < numBuckets ? b : numBuckets -1 ;
+	}
+
+	ubyte sampleClassification(int idx) {
+		return sampleClassifications[idx];
 	}
 }
 
 unittest {
 	// test bucketIdx
-	auto ld = new LevelDistribution(10);
+	auto ld = new LevelDistribution(new LevelHistory(20, 20), 10);
 	assert(ld.bucketIdx(0) == -1);
 	assert(ld.bucketIdx(0.01f) == 0);
+	assert(ld.bucketLevel(9) <= 1.0f);
 }
 
 unittest {

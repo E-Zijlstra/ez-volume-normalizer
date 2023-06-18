@@ -13,18 +13,17 @@ import util;
 
 class Worker {
 
-	// for smooth processes (volume up/down, limiter release)
+	// for slow processes (volume up/down, limiter release)
 	const ticksPerSecond = 10;
 	const tickInterval = dur!"msecs"(1000/ticksPerSecond);
 
 	shared {
 		float outputTarget; // where we want the final signal level to be.
 
-		//float peakMax = 0; // observed max peak value
-		//float peakMaxTrue = 0;
 		long  processedFrames;
 
 		float volume;
+		float volumeDb;
 		bool overrideVolume = false;
 
 		// -- limiter --
@@ -54,8 +53,10 @@ class Worker {
 		volume = outputTarget = 0.3;
 		mLimiter = new Limiter();
 		mLimiter.ticksPerSecond = ticksPerSecond;
-		levelHistory = new LevelHistory(20*4, 250);
-		levelDistribution = new LevelDistribution(256);
+		enum samplesPerSecond = 5; // 1000/5 = 200ms
+		enum msPerSample = 1000/samplesPerSecond;
+		levelHistory = new LevelHistory(30*samplesPerSecond, msPerSample);
+		levelDistribution = new LevelDistribution(levelHistory, 256);
 	}
 
 	void start() {
@@ -79,11 +80,11 @@ class Worker {
 
 	float getOutputTarget() { return this.outputTarget; }
 
+	// for manual volume control
 	public void setOutputTarget(double v) {
 		outputTarget = v;
 		if (outputTarget < 0.01) outputTarget = 0.01;
 		updateTargetVolume();
-		updateVolume();
 	}
 
 	// --- limits / conversions
@@ -137,12 +138,15 @@ private:
 
 		levelHistory.add(pk);
 		if (levelHistory.historyChanged) {
-			levelDistribution.fillBuckets(levelHistory);
+			levelDistribution.processArchivedSample();
 			updateTargetVolume();
 		}
 
 		bool ticked = tick();
-		if (ticked) updateVolume();
+		if (ticked) {
+			updateVolume();
+			volumeDb = stream.getVolumeDb();
+		}
 
 		synchronized(mLimiter) {
 			Limiter limiter = cast(Limiter)(mLimiter);
@@ -152,7 +156,7 @@ private:
 			if (ticked) limiter.release();
 			limiter.process(levelHistory.accumulator);
 		}
-
+		
 		setEndpointVolume();
 		
 		processedFrames = processedFrames + numFramesAvailable;

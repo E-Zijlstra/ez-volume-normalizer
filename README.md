@@ -1,3 +1,9 @@
+## Changelog
+v0.3
+- loudness analyzer improvements
+- added volume/time analyzer graph, mainly for analysis of future improvements
+- send decibels to win api, fixes non-linear volume curves on some devices
+
 ## Overview
 An audio normalizer for Windows, it can be used to normalize the volume of your speakers or headphones.
 It works by reducing the windows master volume, so it will not boost the volume.

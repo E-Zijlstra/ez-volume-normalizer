@@ -10,19 +10,20 @@ public:
 	@property Pixbuf pixbuf() { return mPixbuf; }
 
 protected:
-
+final:
 	Pixbuf mPixbuf;
-	int mWidth, mHeight;
+	int mWidth, mHeight, mHeightMinusOne;
 
 	this(int width, int height) {
 		mPixbuf = new Pixbuf(GdkColorspace.RGB, true, 8, width, height);
 		this.mWidth = width;
 		this.mHeight = height;
+		this.mHeightMinusOne = height - 1;
 	}
 
 	void paintBlock(int begin, int end, RGBA rgba_) {
 		uint rgba = rgba_.toAbgr;
-		int stride = mPixbuf.getRowstride() /4;
+		int stride = mPixbuf.getRowstride() / 4;
 		char[] cdata = mPixbuf.getPixelsWithLength();
 		uint[] data = cast(uint[]) cdata;  // assuming rgba format ... (!)
 
@@ -36,7 +37,43 @@ protected:
 	}
 
 	void paintVerticalLine(int x, RGBA rgba_) {
-		paintBlock(x,x+1,rgba_);
+		uint rgba = rgba_.toAbgr;
+   		int stride = mPixbuf.getRowstride() / 4;
+		char[] cdata = mPixbuf.getPixelsWithLength();
+		uint[] data = cast(uint[]) cdata;  // assuming rgba format ... (!)
+
+		int idx = x;
+		foreach(y; 0..mHeight) {
+  			data[idx] = rgba;
+			idx += stride;
+		}
+	}
+
+	void paintVerticalLine(int x, int height, RGBA barColor, RGBA accentColor) {
+		uint barRgba = barColor.toAbgr;
+		uint accentRgba = accentColor.toAbgr;
+	   	int stride = mPixbuf.getRowstride() / 4;
+		char[] cdata = mPixbuf.getPixelsWithLength();
+		uint[] data = cast(uint[]) cdata;  // assuming rgba format ... (!)
+
+		int idx = (mHeight-1 - height) * stride + x;
+		if (height > 0) {
+			data[idx] = accentRgba;
+			idx += stride;
+		}
+		foreach(y_; 1..height) {
+  			data[idx] = barRgba;
+			idx += stride;
+		}
+	}
+
+	void paintPixel(int x, int y, RGBA color) {
+		y = mHeightMinusOne - y;
+		uint rgba = color.toAbgr;
+		int idx = y * mPixbuf.getRowstride() / 4 + x;
+		char[] cdata = mPixbuf.getPixelsWithLength();
+		uint[] data = cast(uint[]) cdata;  // assuming rgba format ... (!)
+		data[idx] = rgba;
 	}
 
 	int levelToPixel(float level) {

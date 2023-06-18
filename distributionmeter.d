@@ -23,8 +23,8 @@ class DistributionMeter : VuMeterBase {
 		paintBlock(0, mWidth, bgColor);
 
 		real step = 1.0 / mWidth; // step in level per pixel
-		int x0 = cast(int)( distribution.levelByBucketIdx(distribution.lowerBucketIdx  ) * mWidth );
-		int x1 = cast(int)( distribution.levelByBucketIdx(distribution.upperBucketIdx+1) * mWidth );
+		int x0 = cast(int)( distribution.minIncludeLevel * mWidth );
+		int x1 = cast(int)( distribution.maxLevel * mWidth );
 		float level = ((cast(float)x0)+0.5f) * step;  // level in the middle of the pixel
 		foreach(xPixel; x0 .. x1) {
 			float brightness = distribution.levelHitCountNormalized(level);

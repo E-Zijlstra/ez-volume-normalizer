@@ -507,6 +507,7 @@
   </Folder>
   <File path="distributionmeter.d" />
   <File path="leveldistribution.d" />
+  <File path="levelhistorymeter.d" />
   <File path="LICENSE.md" />
   <File path="limiter.d" />
   <File path="README.md" />

@@ -43,9 +43,22 @@ struct StreamListener {
 
 	void setVolume(float v) {
 		if (!endpointVolume) return;
-		endpointVolume.SetMasterVolumeLevelScalar(v, volumeGuid);
-		endpointVolume.GetMasterVolumeLevel(volumeDb);
+
+		// endpointVolume.SetMasterVolumeLevelScalar(v, volumeGuid);
+		import std.math;
+		float db = 20 * log10(v);
+		if (db < minDb) db = minDb;
+		if (db > maxDb) db = maxDb;
+		endpointVolume.SetMasterVolumeLevel(db, &volumeGuid);
 	}
+
+	float getVolumeDb() {
+		if (!endpointVolume) return 0;
+		endpointVolume.GetMasterVolumeLevel(volumeDb);
+		return volumeDb;
+	}
+
+	private float minDb, maxDb, incDb;
 
 	void loop(void delegate(float[], uint numFramesAvailable) blockProcessor) {
 		state = State.starting;
@@ -64,6 +77,10 @@ struct StreamListener {
 
 		speakers.Activate(IID_IAudioEndpointVolume, CLSCTX_ALL, null, cast(void**)&endpointVolume);
 		if (res != 0) return;
+
+		// get dB volume range		
+		endpointVolume.GetVolumeRange(minDb, maxDb, incDb);
+		info("Volume range: " ~ minDb.tos ~ " " ~ maxDb.tos ~ " " ~ incDb.tos);
 
 		// Get a pointer to the audio client
 		IAudioClient audioClient;

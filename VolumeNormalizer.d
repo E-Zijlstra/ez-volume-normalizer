@@ -29,6 +29,7 @@ import util;
 import worker;
 import vumeter;
 import distributionmeter;
+import levelhistorymeter;
 
 //version=decibels;
 import core.runtime;
@@ -84,8 +85,10 @@ class UI {
 	Button button;
 	Switch uiEnable;
 	Label uiDeviceInfo;
-	Image distributionMeterImg;
-	DistributionMeter distributionMeter;
+	//Image distributionMeterImg;
+	//DistributionMeter distributionMeter;
+	Image levelHistoryMeterImg;
+	LevelHistoryMeter levelHistoryMeter;
 	Scale uiTargetLevel;
 	SpinButton uiLimiterStart;
 	SpinButton uiLimiterWidth;
@@ -129,7 +132,7 @@ class UI {
 
 	void open() {
 		worker = new Worker();
-		win = new MainWindow("Volume Normalizer 0.1  -  github.com/E-Zijlstra/ez-volume-normalizer");
+		win = new MainWindow("EZ Volume Normalizer 0.3  -  github.com/E-Zijlstra/ez-volume-normalizer");
 		win.setDefaultSize(630, 300);
 		//win.addGlobalStyle("window {background: rgb(82,74,67);} spinbutton {background: rgb(82,74,67)}");
 
@@ -160,11 +163,21 @@ class UI {
 			uiSignalVu = new VuMeter(vleftWidth - 38, vuMeterHeight );
 			uiSignalVu.paint(0, worker.limitOutputStart, worker.limitOutputEnd);
 			uiSignalVuImg.setFromPixbuf(uiSignalVu.pixbuf);
+		}
 
-			frame.add(distributionMeterImg = new Image());
-			distributionMeter = new DistributionMeter(vleftWidth - 38, 20, worker.levelDistribution);
-			distributionMeter.paint(worker.levelDistribution.loudness);
-			distributionMeterImg.setFromPixbuf(distributionMeter.pixbuf);
+		{	// analyzer
+			Box frame = addFrame(vleft, "Normalizer");
+			frame.setSpacing(5);
+
+			//frame.add(distributionMeterImg = new Image());
+			//distributionMeter = new DistributionMeter(vleftWidth - 38, 10, worker.levelDistribution);
+			//distributionMeter.paint(worker.levelDistribution.loudness);
+			//distributionMeterImg.setFromPixbuf(distributionMeter.pixbuf);
+
+			frame.add(levelHistoryMeterImg = new Image());
+			levelHistoryMeter = new LevelHistoryMeter(vleftWidth - 38, 60, worker.levelHistory, worker.levelDistribution);
+			levelHistoryMeter.paint();
+			levelHistoryMeterImg.setFromPixbuf(levelHistoryMeter.pixbuf);
 		}
 
 		{
@@ -217,9 +230,11 @@ class UI {
 		{
 			Box volCtrl = volPane;
 			//volPane.add(volCtrl = new Box(GtkOrientation.HORIZONTAL, 0));
+			volCtrl.add(uiMasterDecibel = new Label("0 dB"));
 			volCtrl.add(uiMasterVolume = new Scale(GtkOrientation.VERTICAL, 0, 1, 0.05));
 			uiMasterVolume.setVexpand(true);
 			uiMasterVolume.setInverted(true);
+			uiMasterVolume.setDrawValue(false);
 			uiMasterVolume.addOnValueChanged((Range r) { worker.setVolume(uiMasterVolume.getValue()); });
 		}
 
@@ -239,9 +254,9 @@ class UI {
 		volPane.add(uiEnableVolume = new CheckButton("Auto", (CheckButton b){ worker.overrideVolume = !b.getActive();} ));
 
 		// default values
-		uiLimiterStart.setValue(1.0);
+		uiLimiterStart.setValue(1.2);
 		uiLimiterWidth.setValue(0.4);
-		uiLimiterRelease.setValue(0.14);
+		uiLimiterRelease.setValue(0.12);
 		uiTargetLevel.setValue(0.18);
 		uiEnableLimiter.setActive(true);
 		uiEnableVolume.setActive(true);
@@ -282,7 +297,8 @@ class UI {
 
 	bool onEnable(bool state, Switch sw) {
 		if (state && !worker.running) {
-			// switch onf
+			// switch on
+			//worker = new Worker(); problem is that LevelHistoryMeter etc still has references to old worker.
 			worker.setOutputTarget(uiTargetLevel.getValue());
 			processingStartedAt = MonoTime.currTime;
 			worker.processedFrames = 0;
@@ -325,9 +341,13 @@ class UI {
 		uiSignalVu.paint(v, worker.limitSignalStart, worker.limitSignalEnd);
 		uiSignalVuImg.setFromPixbuf(uiSignalVu.pixbuf);
 
-		distributionMeter.paint(worker.levelDistribution.loudness);
-		distributionMeterImg.setFromPixbuf(distributionMeter.pixbuf);
+		//distributionMeter.paint(worker.levelDistribution.loudness);
+		//distributionMeterImg.setFromPixbuf(distributionMeter.pixbuf);
 
+		levelHistoryMeter.paint();
+		levelHistoryMeterImg.setFromPixbuf(levelHistoryMeter.pixbuf);
+
+		uiMasterDecibel.setLabel(format("%.1f dB", worker.volumeDb));
 		uiMasterVolume.setValue(worker.volume);
 
 		float volumeDifference = clamp01(worker.volume - worker.mLimiter.limitedVolume);
@@ -360,7 +380,11 @@ class UI {
 
 			return 1;
 		} catch (Throwable t) {
-			try { info(t.message); } catch(Throwable t) {}
+			try {
+				info(t.message);
+				info(t.file);
+				info(t.info);
+			} catch(Throwable t) {}
 			return 1;
 		}
 	}
