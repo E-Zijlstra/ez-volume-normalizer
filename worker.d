@@ -7,7 +7,7 @@ import core.time;
 import core.thread.osthread;
 import std.algorithm.comparison, std.math.algebraic, core.atomic;
 import streamlistener;
-import limiter, leveldistribution;
+import limiter, analyser;
 
 import util;
 
@@ -34,8 +34,7 @@ class Worker {
 
 	float lowVolumeBoost = 1;
 	Limiter mLimiter;
-	LevelHistory levelHistory;
-	LevelDistribution levelDistribution;
+	Analyser analyser;
 
 
 	void syncLimiter(void delegate(Limiter l) synchronizedAction) {
@@ -56,8 +55,7 @@ class Worker {
 		mLimiter.ticksPerSecond = ticksPerSecond;
 		enum samplesPerSecond = 5; // 1000/5 = 200ms
 		enum msPerSample = 1000/samplesPerSecond;
-		levelHistory = new LevelHistory(30*samplesPerSecond, msPerSample);
-		levelDistribution = new LevelDistribution(levelHistory, 256);
+		analyser = new Analyser(30*samplesPerSecond, msPerSample);
 	}
 
 	void start() {
@@ -76,7 +74,7 @@ class Worker {
 	}
 
 	@property float signal() {
-		return levelHistory.currentPeak();
+		return analyser.visualLevel();
 	}
 
 	float getOutputTarget() { return this.outputTarget; }
@@ -134,12 +132,11 @@ private:
 	// ---- block processing
 
 	void processBlock(float[] data, uint numFramesAvailable) {
+		// info(data.length); // about 10ms of data
 		now = MonoTime.currTime;
 		float pk = floatDataToPeak(data, numFramesAvailable);
 
-		levelHistory.add(pk);
-		if (levelHistory.historyChanged) {
-			levelDistribution.processArchivedSample();
+		if (analyser.processLevel(pk)) {
 			updateNormalizedVolume();
 		}
 
@@ -155,7 +152,7 @@ private:
 			limiter.limitT = limitT();
 			limiter.limitW = limitW();
 			if (ticked) limiter.release();
-			limiter.process(levelHistory.accumulator);
+			limiter.process(analyser.level);
 		}
 		
 		setEndpointVolume();
@@ -172,7 +169,7 @@ private:
 	}
 
 	void updateNormalizedVolume() {
-		float loudness = levelDistribution.loudness;
+		float loudness = analyser.loudness;
 		float vol2 = loudness > 0.001 ? outputTarget / loudness : 0.1; // use low volume when audio is silence
 		normalizedVolume = min(1f, vol2);
 	}
@@ -219,12 +216,6 @@ private:
 
 		stream.setVolume(clamp01(v));
 	}
-
-
-	import std.algorithm.searching, std.array, std.algorithm.iteration;
-
-	
-	@property auto chunkPeaks() { return levelHistory.history; }
 
 
 }

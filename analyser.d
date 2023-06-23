@@ -1,16 +1,92 @@
-module leveldistribution;
+module analyser;
 import util;
 import core.time;
 import std.math;
 import std.algorithm;
 
+final class Analyser {
+	VisualPeak visualPeak;
+	LevelHistory levelHistory;
+	LevelFilter levelFilter;
+	LoudnessComputer loudnessComputer;
+
+	Duration sampleDuration;
+
+	this(int numSamples, int sampleDurationMs) {
+		sampleDuration = msecs(sampleDurationMs);
+		visualPeak = new VisualPeak();
+		levelHistory = new LevelHistory(numSamples, sampleDuration);
+		levelFilter = new LevelFilter(levelHistory, 256);
+		loudnessComputer = new LoudnessComputer(levelHistory, levelFilter);
+	}
+
+	bool processLevel(float level) {
+		auto now = MonoTime.currTime;
+		visualPeak.store(now, level);
+		bool historyChanged = levelHistory.add(now, level);
+		if (historyChanged) {
+			levelFilter.classifySamples();
+			loudnessComputer.computeLoudness();
+		}
+		return historyChanged;
+	}
+
+	@property float visualLevel() {
+		return visualPeak.peak();
+	}
+
+	@property float loudness() {
+		return loudnessComputer.loudness;
+	}
+
+	@property float level() {
+		return levelHistory.accumulator;
+	}
+
+	private:
+
+
+}
+
+
+// short term shift buffer for an accurate visual reading of the level
+final class VisualPeak {
+	private {
+		enum timeSpanMs = 44; // 40 = 25fps; 48 = 20fps; 44 = 22fps
+		enum numSamples = 4;
+		Duration sampleDuration = msecs(timeSpanMs/numSamples);
+		float[numSamples] samples;
+		MonoTime nextSampleTime;
+		float mCurrentPeak;
+	}
+
+	this() {
+		foreach(ref h; samples) h = 0f;
+		mCurrentPeak = 0;
+		nextSampleTime = MonoTime.currTime;
+	}
+
+	void store(MonoTime now, float level) {
+		samples[0] = max(samples[0], level);
+		mCurrentPeak = max(mCurrentPeak, level);
+
+		if (now > nextSampleTime) {
+			samples[3] = samples[2];
+			samples[2] = samples[1];
+			samples[1] = samples[0];
+			samples[0] = 0f;
+			nextSampleTime = now + sampleDuration;
+			mCurrentPeak = samples[].maxElement;
+		}
+	}
+
+	@property float peak() {
+		return mCurrentPeak;
+	}
+}
+
 class LevelHistory {
 	float[] history;
-	float[] averages;
-	bool historyChanged = false;
-	float accumulator = 0f;
-	float avgLevel = 0f;
-	float maxLevel = 0f;
 
 	@property int writeIdx() {
 		return historyIdx;
@@ -20,74 +96,48 @@ class LevelHistory {
 		return historyIdx == 0 ? history.length - 1 : historyIdx - 1;
 	}
 
+	@property float lastWrittenSample() {
+		return history[writtenIdx];
+	}
+
 private:
 	int historyIdx = 0;  // next write position in history
 	Duration sampleDuration;
 	MonoTime nextSampleTime;
+	float accumulator = 0f;
 
-	// short term ring buffer for an accurate reading of the actual peak
-	enum peakBufferSize = 4;
-	Duration peakBucketDuration = msecs(20/peakBufferSize);
-	float[peakBufferSize] peakBuffer;
-	MonoTime nextPeakTime;
 
 public:
-	this(int numSamples, int sampleDurationMs) {
+	this(int numSamples, Duration sampleDuration_) {
 		history.length = numSamples;
-		averages.length = numSamples;
-		sampleDuration = msecs(sampleDurationMs);
-		nextSampleTime = nextPeakTime = MonoTime.currTime;
+		sampleDuration = sampleDuration_;
+		nextSampleTime = MonoTime.currTime;
 		foreach(ref h; history) h = 0f;
-		foreach(ref h; peakBuffer) h = 0f;
-		foreach(ref h; averages) h = 0f;
 	}
 
-	void add(float level) {
+
+	bool add(MonoTime now, float level) {
 		accumulator = max(accumulator, level);
 
-		// archive the accumulator in the history
-		MonoTime now = MonoTime.currTime;
-		historyChanged = now > nextSampleTime;
+		// archive the accumulator
+		bool historyChanged = now > nextSampleTime;
 		if (historyChanged) {
 			history[historyIdx] = accumulator;
 			accumulator = 0f;
 			nextSampleTime = now + sampleDuration;
-		}
-
-		// keep track of actual peak
-		if (now > nextPeakTime) {
-			peakBuffer[3] = peakBuffer[2];
-			peakBuffer[2] = peakBuffer[1];
-			peakBuffer[0] = 0f;
-			nextPeakTime = now + peakBucketDuration;
-		}
-		peakBuffer[0] = max(peakBuffer[0], level);
-
-		// compute some stats
-		if (historyChanged) {
-			avgLevel = history.sum / history.length;
-			maxLevel = history.maxElement;
-			averages[historyIdx] = avgLevel;
 
 			historyIdx++;
 			if (historyIdx >= history.length) historyIdx = 0;
 		}
-	}
 
-	@property float lastWrittenSample() {
-		return history.wrap(historyIdx-1);
-	}
-
-	// max signal level in last 20 milliseconds
-	float currentPeak() {
-		return peakBuffer[].maxElement;
+		return historyChanged;
 	}
 }
 
 
 // Divides the range of level values into N buckets.
 // It counts the number of hits in each bucket reached by the signal level.
-final class LevelDistribution {
+final class LevelFilter {
 	private {
 		LevelHistory history;
 		int numBuckets;
@@ -97,7 +147,7 @@ final class LevelDistribution {
 		float mLoudness = 0f;
 	}
 	ubyte[] sampleClassifications;
-	float[] loudnesses;
+	float[] averages;
 
 	enum LOW = 1;
 	enum INCLUDED = 2;
@@ -106,7 +156,10 @@ final class LevelDistribution {
 	// range of levels used in the weighted average
 	float minIncludeLevel = 0f;
 	float maxIncludeLevel = 0f;
+
+	// some stats
 	float maxLevel;
+	float avgLevel;
 
 	// ----------------
 
@@ -116,15 +169,24 @@ final class LevelDistribution {
 		buckets.length = numBuckets;
 		bucketSize = 1.0 / numBuckets;
 		sampleClassifications.length = history.history.length;
-		loudnesses.length = history.history.length;
+		averages.length = history.history.length;
+		foreach(ref h; averages) h = 0f;
 	}
 
-	void processArchivedSample() {
+	void classifySamples() {
 		float[] samples = history.history;
+	
+		// compute average
+		maxLevel = samples.maxElement;
+		avgLevel = samples.sum / samples.length;
+		averages[history.writtenIdx] = avgLevel;
+
+
+
 		foreach(ref bucket; buckets) bucket = 0;
 
 		// count for each buckets how many times it has been hit by the signal
-		float threshold = history.avgLevel*0.9;
+		float threshold = avgLevel*0.9;
 		bucketMaxHits = 0;
 		int lowerBucketIdx = cast(int)(buckets.length - 1);
 		int upperBucketIdx = 0;
@@ -143,7 +205,7 @@ final class LevelDistribution {
 		// when history is empty, use the average
 		if (lowerBucketIdx > upperBucketIdx) {
 			bucketMaxHits = 0;
-			mLoudness = history.avgLevel;
+			mLoudness = avgLevel;
 			minIncludeLevel = 0f;
 			maxIncludeLevel = 1f;
 			return;
@@ -178,25 +240,7 @@ final class LevelDistribution {
 		if (s > minIncludeLevel) c = INCLUDED;
 		if (s >= maxIncludeLevel) c = HIGH;
 		sampleClassifications[history.writtenIdx] = c;
-		loudnesses[history.writtenIdx] = mLoudness;
 
-
-		// compute loudness by weighted average of the included samples
-		mLoudness = 0f;
-		int totalHits = 0;
-		real acc = 0;
-		foreach(i, ubyte classification; sampleClassifications) {
-			if (classification == INCLUDED) {
-				totalHits++;
-				acc += samples[i];
-			}
-		}
-		if (totalHits == 0) totalHits = 1;
-		mLoudness = acc / totalHits;
-	}
-
-	@property float loudness() {
-		return mLoudness;
 	}
 
 	int levelHitCount(float level) {
@@ -227,33 +271,32 @@ final class LevelDistribution {
 	}
 }
 
-unittest {
-	// test bucketIdx
-	auto ld = new LevelDistribution(new LevelHistory(20, 20), 10);
-	assert(ld.bucketIdx(0) == -1);
-	assert(ld.bucketIdx(0.01f) == 0);
-	assert(ld.bucketLevel(9) <= 1.0f);
-}
+// calculates the loudness from the filtered samples
+final class LoudnessComputer {
+	private {
+		LevelHistory levHistory;
+		LevelFilter levFilter;
+	}
+	float[] history;
+	float loudness;
 
-unittest {
-	return;
-	// test propagation of hits
-	//auto ld = new LevelDistribution(10);
-	//enum e = 0.0001;
-	//ld.fillBuckets([0.0, 0.05, 0.1-e, 0.0, 0.0, 0.4-e, 0.5-e, 0, 0,0,0, 1.0+e]);
-	//assert(ld.buckets[9] == 1); // 0.90001..1.0+
-	//assert(ld.buckets[8] == 1); // 0.80001..0.9
-	//assert(ld.buckets[7] == 1); // 0.70001..0.8
-	//assert(ld.buckets[6] == 1); // 0.60001..0.7
-	//assert(ld.buckets[5] == 1); // 0.50001..0.6
-	//assert(ld.buckets[4] == 2); // 0.40001..0.5
-	//assert(ld.buckets[3] == 3); // 0.30001..0.4
-	//assert(ld.buckets[2] == 3); // 0.20001..0.3
-	//assert(ld.buckets[1] == 3); // 0.10001..0.2
-	//assert(ld.buckets[0] == 5); // 0.00001..0.1
-	//assert(ld.levelHitCount(0f) == 0);
-	//assert(ld.levelHitCount(0.01f) == 5);
-	//assert(ld.levelHitCount(0.0999f) == 5);
-	//assert(ld.levelHitCount(1.0f) == 1);
-	//assert(ld.levelHitCount(1.1f) == 1);
+	this(LevelHistory levHistory_, LevelFilter levFilter_) {
+		levHistory = levHistory_;
+		levFilter = levFilter_;
+		history.length = levHistory.history.length;
+	}
+
+	void computeLoudness() {
+		int sampleCount = 0;
+		real acc = 0;
+		foreach(i, ubyte classification; levFilter.sampleClassifications) {
+			if (classification == LevelFilter.INCLUDED) {
+				sampleCount++;
+				acc += levHistory.history[i];
+			}
+		}
+		if (sampleCount == 0) sampleCount = 1;
+		loudness = acc / sampleCount;
+		history[levHistory.writtenIdx] = loudness;
+	}
 }

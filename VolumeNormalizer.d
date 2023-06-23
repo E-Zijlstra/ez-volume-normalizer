@@ -28,7 +28,6 @@ import gtk.ComboBoxText;
 import util;
 import worker;
 import vumeter;
-import distributionmeter;
 import levelhistorymeter;
 import streamlistener;
 
@@ -87,8 +86,6 @@ class UI {
 	Switch uiEnable;
 	ComboBoxText uiDevice;
 	Label uiDeviceInfo;
-	//Image distributionMeterImg;
-	//DistributionMeter distributionMeter;
 	Image levelHistoryMeterImg;
 	LevelHistoryMeter levelHistoryMeter;
 	Scale uiTargetLevel;
@@ -189,13 +186,8 @@ class UI {
 			Box frame = addFrame(vleft, "Normalizer");
 			frame.setSpacing(5);
 
-			//frame.add(distributionMeterImg = new Image());
-			//distributionMeter = new DistributionMeter(vleftWidth - 38, 10, worker.levelDistribution);
-			//distributionMeter.paint(worker.levelDistribution.loudness);
-			//distributionMeterImg.setFromPixbuf(distributionMeter.pixbuf);
-
 			frame.add(levelHistoryMeterImg = new Image());
-			levelHistoryMeter = new LevelHistoryMeter(vleftWidth - 38, 60, worker.levelHistory, worker.levelDistribution);
+			levelHistoryMeter = new LevelHistoryMeter(vleftWidth - 38, 60, worker.analyser);
 			levelHistoryMeter.paint();
 			levelHistoryMeterImg.setFromPixbuf(levelHistoryMeter.pixbuf);
 
@@ -253,7 +245,7 @@ class UI {
 			uiMasterVolume.setVexpand(true);
 			uiMasterVolume.setInverted(true);
 			uiMasterVolume.setDrawValue(false);
-			uiMasterVolume.addOnValueChanged((Range r) { worker.setVolume(uiMasterVolume.getValue()); });
+			//uiMasterVolume.addOnValueChanged((Range r) { worker.setVolume(uiMasterVolume.getValue()); info("vol changed"); });
 		}
 
 		uiLowVolumeBoost = new ComboBoxText(false);
@@ -371,6 +363,8 @@ class UI {
 		}
 	}
 
+	float lastSetVolume = 0;
+
 	void displayProcessing() {
 		import std.math.exponential;
 		real v = worker.signal;
@@ -378,31 +372,31 @@ class UI {
 			v = 20* log10(worker.peak);
 			v+= 60;
 		}
-		//uiSignal.setValue(v);
 		uiSignalVu.paint(v, worker.limitSignalStart, worker.limitSignalEnd);
 		uiSignalVuImg.setFromPixbuf(uiSignalVu.pixbuf);
-
-		//distributionMeter.paint(worker.levelDistribution.loudness);
-		//distributionMeterImg.setFromPixbuf(distributionMeter.pixbuf);
 
 		levelHistoryMeter.paint();
 		levelHistoryMeterImg.setFromPixbuf(levelHistoryMeter.pixbuf);
 
 		uiMasterDecibel.setLabel(format("%.1f dB", worker.volumeDb));
-		uiMasterVolume.setValue(worker.volume);
+		float manualVolume = uiMasterVolume.getValue();
+		if (lastSetVolume != manualVolume) {
+			worker.setVolume(manualVolume);
+			//info("setting vol");
+		}
+		else
+			uiMasterVolume.setValue(worker.volume);
+		lastSetVolume = worker.volume;
 
 		float volumeDifference = clamp01(worker.volume - worker.mLimiter.limitedVolume);
 		uiLimiter.setValue(volumeDifference);
 
-
-		import std.format;
 
 		uiOutputVu.paint(worker.volume * worker.signal, worker.limitOutputStart, worker.limitOutputEndPreLimiter);
 		uiOutputVuImg.setFromPixbuf(uiOutputVu.pixbuf);
 
 		uiOutputLimitedVu.paint(worker.mLimiter.limitedVolume * worker.signal, worker.limitOutputStart, worker.limitOutputEnd);
 		uiOutputLimitedVuImg.setFromPixbuf(uiOutputLimitedVu.pixbuf);
-
 
 	}
 

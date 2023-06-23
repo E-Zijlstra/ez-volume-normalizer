@@ -505,8 +505,7 @@
    <File path="doc\controls.png" />
    <File path="doc\gtk-build-from-git-bash.sh" />
   </Folder>
-  <File path="distributionmeter.d" />
-  <File path="leveldistribution.d" />
+  <File path="analyser.d" />
   <File path="levelhistorymeter.d" />
   <File path="LICENSE.md" />
   <File path="limiter.d" />
