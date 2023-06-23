@@ -24,6 +24,8 @@ import gtk.HSeparator;
 import gtk.Image;
 import gtk.CheckButton;
 import gtk.ComboBoxText;
+import gtk.Menu;
+import gtk.MenuItem;
 
 import util;
 import worker;
@@ -104,11 +106,13 @@ class UI {
 	CheckButton uiEnableVolume;
 	ComboBoxText uiLowVolumeBoost;
 
+	Menu volumePopup;
 
 	Worker worker;
 	StreamEndpoint[] endpoints;
 
 	bool wasRunning = true;
+	bool volumeSliderInDb = false;
 
 	const levelCss = "
 		levelbar block.full {
@@ -141,6 +145,15 @@ class UI {
 		//import gtk.Settings;
 		//Settings set = Settings.getDefault();
 		//set.setData("gtk-theme-name", cast(void*)"Adwaita".ptr);
+
+
+		volumePopup = new Menu();
+		volumePopup.setTitle("Volume");
+		MenuItem uiVolLinear, uiVolLog;
+		volumePopup.append(uiVolLinear = new MenuItem("Linear"));
+		volumePopup.append(uiVolLog = new MenuItem("Log"));
+		uiVolLinear.addOnActivate( (MenuItem) { volumeSliderInDb = false; });
+		uiVolLog.addOnActivate( (MenuItem){ volumeSliderInDb = true; });
 
 		auto leftrightSplit = new Box(GtkOrientation.HORIZONTAL, 0);
 		win.add(leftrightSplit);
@@ -178,7 +191,7 @@ class UI {
 
 		{   // target
 			Box frame = addFrame(vleft, "normalizer target / limiter range");
-			frame.add(uiTargetLevel = new Scale(GtkOrientation.HORIZONTAL, 0, 1, 0.01));
+			frame.add(uiTargetLevel = new Scale(GtkOrientation.HORIZONTAL, 0.01, 1, 0.01));
 			uiTargetLevel.addOnValueChanged((Range r) { setOutputTarget(uiTargetLevel.getValue()); });
 		}
 
@@ -245,7 +258,15 @@ class UI {
 			uiMasterVolume.setVexpand(true);
 			uiMasterVolume.setInverted(true);
 			uiMasterVolume.setDrawValue(false);
-			//uiMasterVolume.addOnValueChanged((Range r) { worker.setVolume(uiMasterVolume.getValue()); info("vol changed"); });
+			uiMasterVolume.addOnValueChanged(&volumeSliderChanged);
+			uiMasterVolume.addOnButtonPress( (GdkEventButton* b, Widget) {
+				if(b.button == 3) {
+					volumePopup.showAll();
+					volumePopup.popupAtPointer(null);
+					return true;
+				}
+				return false;
+			} );
 		}
 
 		uiLowVolumeBoost = new ComboBoxText(false);
@@ -363,7 +384,17 @@ class UI {
 		}
 	}
 
-	float lastSetVolume = 0;
+	float autoSetVolume = 0;
+
+	void volumeSliderChanged(Range r) {
+		float scalar = uiMasterVolume.getValue();
+		if (scalar == autoSetVolume) return;
+
+		if (volumeSliderInDb)
+			worker.setVolumeDb(worker.stream.scalarToDb(scalar));
+		else
+			worker.setVolume(scalar);
+	}
 
 	void displayProcessing() {
 		import std.math.exponential;
@@ -378,15 +409,12 @@ class UI {
 		levelHistoryMeter.paint();
 		levelHistoryMeterImg.setFromPixbuf(levelHistoryMeter.pixbuf);
 
-		uiMasterDecibel.setLabel(format("%.1f dB", worker.volumeDb));
-		float manualVolume = uiMasterVolume.getValue();
-		if (lastSetVolume != manualVolume) {
-			worker.setVolume(manualVolume);
-			//info("setting vol");
-		}
+		uiMasterDecibel.setLabel(format("%.1f dB", worker.actualVolumeDb));
+		if (volumeSliderInDb)
+			autoSetVolume = worker.stream.dbToScalar(worker.volumeDb);
 		else
-			uiMasterVolume.setValue(worker.volume);
-		lastSetVolume = worker.volume;
+			autoSetVolume = worker.volume;
+		uiMasterVolume.setValue(autoSetVolume);
 
 		float volumeDifference = clamp01(worker.volume - worker.mLimiter.limitedVolume);
 		uiLimiter.setValue(volumeDifference);

@@ -26,7 +26,19 @@ struct StreamListener {
 	int sampleRate;
 	int numChannels;
 	float volumeDb;
+	float requestedDb;
 	string deviceId;
+	float minDb, maxDb, incDb;
+
+	// returns a value between 0 and 1, where 0 equals minDb, and 1 equals maxDb
+	float dbToScalar(float db) {
+		return (db- minDb) / (maxDb - minDb);
+	}
+
+	// inverse of dbToScalar
+	float scalarToDb(float s) {
+		return s * (maxDb - minDb) + minDb;
+	}
 
 	IAudioEndpointVolume endpointVolume;
 	GUID volumeGuid;
@@ -56,6 +68,8 @@ struct StreamListener {
 		float db = 20 * log10(v);
 		if (db < minDb) db = minDb;
 		if (db > maxDb) db = maxDb;
+		if (abs(requestedDb-db)<0.5f) return;
+		requestedDb = db;
 		endpointVolume.SetMasterVolumeLevel(db, &volumeGuid);
 	}
 
@@ -116,9 +130,6 @@ struct StreamListener {
 		return endpoints;
 	}
 
-
-
-	private float minDb, maxDb, incDb;
 
 	void loop(void delegate(float[], uint numFramesAvailable) blockProcessor) {
 		state = State.starting;

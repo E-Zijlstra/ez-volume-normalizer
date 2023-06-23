@@ -23,7 +23,7 @@ class Worker {
 		long  processedFrames;
 
 		float volume;
-		float volumeDb;
+		float actualVolumeDb;
 		bool overrideVolume = false;
 
 		// -- limiter --
@@ -36,6 +36,9 @@ class Worker {
 	Limiter mLimiter;
 	Analyser analyser;
 
+	@property volumeDb() {
+		return 20*log10(volume);
+	}
 
 	void syncLimiter(void delegate(Limiter l) synchronizedAction) {
 		synchronized(mLimiter) {
@@ -60,8 +63,14 @@ class Worker {
 
 	void start() {
 		if (stream.state != State.stopped) return;
+		stream.state = State.starting;
 		thread = new Thread(&run);
 		thread.start();
+		while(stream.state == State.starting) {
+		}
+		// -36 is max attenuation when target is set to 0.01. Clip it so we can use the full range of the volume slider.
+		if (stream.minDb < -40) stream.minDb = -40;
+
 	}
 
 	void stop() {
@@ -70,6 +79,12 @@ class Worker {
 
 	void setVolume(float v) {
 		volume = v;
+		setEndpointVolume();
+	}
+
+	void setVolumeDb(float db) {
+		volume = pow(10, db/20);
+		//info("setVolumeDb: ", db, " -> ", volume);
 		setEndpointVolume();
 	}
 
@@ -143,7 +158,7 @@ private:
 		bool ticked = tick();
 		if (ticked) {
 			updateVolume();
-			volumeDb = stream.getVolumeDb();
+			actualVolumeDb = stream.getVolumeDb();
 		}
 
 		synchronized(mLimiter) {
@@ -200,19 +215,11 @@ private:
 	void setEndpointVolume() {
 		import core.stdc.math: pow, cpow = pow;
 		float v = min(volume, mLimiter.limitedVolume);
-		if (abs(v-previousEndpointVolume) < 0.005) return;
+		if (abs(v-previousEndpointVolume) < 0.002) return;
 		previousEndpointVolume = v;
 
-		// wolfram results for: y = a+log(x+b), 0 = a+log(b), 1 = a+log(1+b)
-		//enum a = 0.11111;
-		//enum b = 0.954243;
-		//
-		//if (volumeProfile == 1) v = v*v;
-		//if (volumeProfile == 2) v = log10(v+a) + b;
-		//if (volumeProfile == 3) v = sqrt(v);
-		//if (volumeProfile == 4) v = cpow(v, 1/2.5);
-
-		v = cpow(v, 1.0/lowVolumeBoost);
+		if (lowVolumeBoost != 1)
+			v = cpow(v, 1.0/lowVolumeBoost);
 
 		stream.setVolume(clamp01(v));
 	}
