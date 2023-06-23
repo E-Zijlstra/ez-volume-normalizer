@@ -13,6 +13,12 @@ import core.sys.windows.windows;
 import windows;
 import util;
 
+struct StreamEndpoint {
+	string id;
+	string name;
+	bool isDefault;
+}
+
 struct StreamListener {
 	const capatureHz = 50;
 
@@ -20,6 +26,7 @@ struct StreamListener {
 	int sampleRate;
 	int numChannels;
 	float volumeDb;
+	string deviceId;
 
 	IAudioEndpointVolume endpointVolume;
 	GUID volumeGuid;
@@ -58,6 +65,59 @@ struct StreamListener {
 		return volumeDb;
 	}
 
+
+	StreamEndpoint[] getEndpoints() {
+		import std.conv;
+		import core.sys.windows.objidl;
+
+		StreamEndpoint[] endpoints;
+		CoInitialize(null);
+
+		// Get a pointer to the default audio endpoint
+		IMMDeviceEnumerator deviceEnumerator;
+		uint res = CoCreateInstance(&CLSID_MMDeviceEnumerator, null, CLSCTX_ALL, &IID_IMMDeviceEnumerator, cast(void**)&deviceEnumerator);
+		if (res != 0) return endpoints;
+
+		// List all endpoints
+		wchar* zId;
+		IMMDevice defaultDevice;
+		deviceEnumerator.GetDefaultAudioEndpoint(EDataFlow.eRender, ERole.eConsole, defaultDevice);
+		defaultDevice.GetId(zId);
+		string defaultId = to!string(zId);
+		defaultDevice.Release();
+		//deviceId = defaultId;
+
+		IMMDeviceCollection pCollection;
+		deviceEnumerator.EnumAudioEndpoints(EDataFlow.eRender, DEVICE_STATE_ACTIVE, pCollection);
+		uint numDevices;
+		pCollection.GetCount(numDevices);
+		for(uint i =0; i < numDevices; i++) {
+			IMMDevice device;
+			pCollection.Item(i, device);
+			device.GetId(zId);
+			//info("Device " ~ i.tos ~ " " ~ to!string(zId));
+			IPropertyStore propertyStore;
+			device.OpenPropertyStore(STGM_READ, propertyStore);
+			PROPVARIANT prop;
+			// DEVPKEY_Device_FriendlyName => PA24A (NVIDIA High Definition Audio)
+			// DEVPKEY_Device_DeviceDesc => PA24A
+			// DEVPKEY_DeviceInterface_FriendlyName => NVIDIA High Definition Audio
+			propertyStore.GetValue(DEVPKEY_Device_DeviceDesc, prop);
+			//info("Device " ~ i.tos ~ " " ~ to!string(prop.pwszVal));
+			endpoints ~= StreamEndpoint(to!string(zId), to!string(prop.pwszVal), defaultId == to!string(zId));
+			propertyStore.Release();
+			device.Release();
+		}
+		pCollection.Release();
+
+		deviceEnumerator.Release();
+		CoUninitialize();
+
+		return endpoints;
+	}
+
+
+
 	private float minDb, maxDb, incDb;
 
 	void loop(void delegate(float[], uint numFramesAvailable) blockProcessor) {
@@ -72,7 +132,10 @@ struct StreamListener {
 		if (res != 0) return;
 
 		IMMDevice speakers;
-		deviceEnumerator.GetDefaultAudioEndpoint(EDataFlow.eRender, ERole.eConsole, speakers);
+		//deviceEnumerator.GetDefaultAudioEndpoint(EDataFlow.eRender, ERole.eConsole, speakers);
+		import std.utf;
+		const(wchar)* wcId = deviceId.toUTF16z;
+		deviceEnumerator.GetDevice(wcId, &speakers);
 		if (speakers is null) return;
 
 		speakers.Activate(IID_IAudioEndpointVolume, CLSCTX_ALL, null, cast(void**)&endpointVolume);

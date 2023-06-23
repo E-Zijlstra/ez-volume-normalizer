@@ -167,7 +167,7 @@ final class LevelDistribution {
 		}
 
 		// the new range to classify samples
-		minIncludeLevel = bucketLevel(lowerBucketIdx);
+		minIncludeLevel = max(0.001f, bucketLevel(lowerBucketIdx)); // 0.001 because sometimes there is a small signal when nothing is playing
 		maxIncludeLevel = bucketLevel(maxIncludeBucketIdx+1);
 		maxLevel = bucketLevel(upperBucketIdx+1);
 
@@ -175,7 +175,7 @@ final class LevelDistribution {
 		size_t lastSampleIdx = history.writtenIdx;
 		float s = samples[lastSampleIdx];
 		ubyte c = LOW;
-		if (s >= minIncludeLevel) c = INCLUDED;
+		if (s > minIncludeLevel) c = INCLUDED;
 		if (s >= maxIncludeLevel) c = HIGH;
 		sampleClassifications[history.writtenIdx] = c;
 		loudnesses[history.writtenIdx] = mLoudness;

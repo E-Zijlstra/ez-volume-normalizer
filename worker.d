@@ -31,10 +31,12 @@ class Worker {
 		float limiterStart = 1.25f;
 		float limiterWidth = 0.2f;
 	}
-	Limiter mLimiter;
+
 	float lowVolumeBoost = 1;
+	Limiter mLimiter;
 	LevelHistory levelHistory;
 	LevelDistribution levelDistribution;
+
 
 	void syncLimiter(void delegate(Limiter l) synchronizedAction) {
 		synchronized(mLimiter) {
@@ -46,7 +48,6 @@ class Worker {
 
 	alias State = StreamListener.State;
 	@property StreamListener.State state() { return stream.state; }
-	@property bool running() { return stream.state == StreamListener.State.running; }
 
 
 	this() {
@@ -80,11 +81,10 @@ class Worker {
 
 	float getOutputTarget() { return this.outputTarget; }
 
-	// for manual volume control
 	public void setOutputTarget(double v) {
 		outputTarget = v;
 		if (outputTarget < 0.01) outputTarget = 0.01;
-		updateTargetVolume();
+		updateNormalizedVolume();
 	}
 
 	// --- limits / conversions
@@ -124,6 +124,7 @@ class Worker {
 private:
 	Thread thread;
 	MonoTime now;
+	float normalizedVolume = 0;
 
 	void run() {
 		stream.loop(&processBlock);
@@ -139,7 +140,7 @@ private:
 		levelHistory.add(pk);
 		if (levelHistory.historyChanged) {
 			levelDistribution.processArchivedSample();
-			updateTargetVolume();
+			updateNormalizedVolume();
 		}
 
 		bool ticked = tick();
@@ -170,11 +171,10 @@ private:
 		return pk;
 	}
 
-	float targetVolume = 0;
-	void updateTargetVolume() {
+	void updateNormalizedVolume() {
 		float loudness = levelDistribution.loudness;
 		float vol2 = loudness > 0.001 ? outputTarget / loudness : 0.1; // use low volume when audio is silence
-		targetVolume = min(1f, vol2);
+		normalizedVolume = min(1f, vol2);
 	}
 
 	MonoTime lastTickExecuted;
@@ -188,9 +188,9 @@ private:
 
 	// call on each tick
 	void updateVolume() {
-		if (volume == targetVolume || overrideVolume) return;
+		if (volume == normalizedVolume || overrideVolume) return;
 
-		float vol2 = targetVolume;
+		float vol2 = normalizedVolume;
 		float tempo = 0.1;
 		if (vol2 > volume) vol2 = (vol2 - volume)*tempo + volume; // increase volume
 		if (vol2 < volume) vol2 = volume - (volume - vol2) * tempo; // decrease volume
@@ -227,11 +227,4 @@ private:
 	@property auto chunkPeaks() { return levelHistory.history; }
 
 
-}
-
-
-bool update(T)(ref T store, T val)  {
-	if (store == val) return false;
-	store = val;
-	return true;
 }

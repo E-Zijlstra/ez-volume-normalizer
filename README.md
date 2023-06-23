@@ -1,23 +1,74 @@
-## Changelog
+
+# Overview
+This is an MS Windows volume normalizer.
+It works by reducing the windows master volume, it can not boost your audio.
+- Requirements: 64 bit windows.
+- Tested on: Windows 10.
+
+![controls](doc/controls.png)
+
+## Warning
+This normalizer is experimental and may blow up your speakers or ears.
+
+
+# Installing
+- Install GTKD runtime 3.24.8 from here: https://gtkd.org/Downloads/runtime/gtk3-runtime_3.24.8_64bit.exe
+- Run the executable that you find under releases, or compile the source code yourself. (see below)
+
+# Changelog
+v0.4
+ - Device selection
+ - Rearranged UI
+ - Tweaked limiter defaults
+
 v0.3
 - loudness analyzer improvements
 - added volume/time analyzer graph, mainly for analysis of future improvements
 - send decibels to win api, fixes non-linear volume curves on some devices
 
-## Overview
-An audio normalizer for Windows, it can be used to normalize the volume of your speakers or headphones.
-It works by reducing the windows master volume, so it will not boost the volume.
-- Requirements: 64 bit windows.
-- Tested on: Windows 10.
+# User manual
 
-![controls](https://github.com/E-Zijlstra/ez-volume-normalizer/blob/main/doc/controls.png)
+### Target level
+![controls](doc/target.png)
 
-## Installing
+This normalizer works by reducing the master volume.
+Therefore you need to set target level to some low value, like 0.2; setting it to 1 effectively disables the normalizer.
 
-- Install GTKD runtime 3.24.8 from here: https://gtkd.org/Downloads/runtime/gtk3-runtime_3.24.8_64bit.exe
-- Run the executable that you find under releases, or compile the source code yourself.
+The slider also sets the limiter operating range, indicated with C and L.
+These can be fine tuned with the limiter start/width setting.
 
-## Compiling
+### Normalizer
+![controls](doc/normalizer.png)
+
+The purple line is used to filter out soft passages. The bright green bars are the samples that are selected to determine the loudness of what is playing. The loudness is displayed as a yellow line.
+
+The normalizer will control the volume slider to make the loudness match the target level.
+Disabling the normalizer allows you to manually set the volume with the volume slider.
+
+The meter displays the signal after being processed by the normalizer (or manually set volume)
+
+### Limiter
+![controls](doc/limiter.png)
+
+The limiter starts compressing at C (or the orange area of the level meters) and won't let the signal go above L (fully limited) (red area). You can shift these points with start/width controls.
+
+The meter displays the signal after being processed by the limiter.
+If you want to see red here, you need to disable the limiter ;)
+Under the meter there is thin red bar, this the volume reduction applied by the limiter.
+
+The limiter does not affect the volume slider, that would make it impossible to disable the normalizer and manually set the volume.
+
+### Low volume boost
+This may be useful or not. It changes the output volume curve.
+
+### Power off
+- Disable normalizer
+- Set volume to your desired level
+- Toggle the power button, or close the program
+
+
+
+# Compiling
 - Checkout GTKD : https://github.com/gtkd-developers/GtkD/
 - Build the GTKD libs, something like this:
 ```
@@ -32,37 +83,5 @@ rdmd.exe -m64 ./Build.d
 - compile and run
 - Full/slightly different instructions to install GTKD: https://github.com/gtkd-developers/GtkD/wiki/Installing-on-Windows
 
-## User manual
-First look at the image doc/controls.png, that should explain most.
-
-This normalizer works by reducing the master volume.
-Therefore you need to set target level to some low value, like 0.2; setting it to 1 effectively disables the normalizer, it cannot boost sound.
-The volume slider will be automatically updated to make the output sound match the target level.
-This is not an immediate process, it will take a few seconds to reach the target level, because of that there is also a limiter.
-
-The target level also set the limiter operating range, which can be finetuned with the limiter threshold setting.
-The orange area of the level meters indicate the limiter operating range, it uses a soft-knee formula so if the signal is slightly above the threshold it is only attenuated slightly.
-The target slider has an C and L indicator, it indicates where the limiter starts compressing (C) and where it is fully attenuating (L).
-
-You can disable the limiter and normalizer individually.
-
-Unticking the `auto` checkbox disables the normalizer and allows you to set the volume manually, the limiter will continue to operate unless you disable it too.
-The limiter does not affect the volume slider, that would be confusing in manual mode.
-
-## Warning
-This normalizer is experimental and may blow up your speakers or ears.
-
-## Power off
-- Untick auto
-- Set volume to your desired level
-- Toggle the power button, or close the program
-
-## Low volume boost
-If your sound card doesn't behave linearly you can compensate for that with this setting.
-The formula is: y = x^(1/f), where x is the input volume and f is the value you select, ideally it would be 1.0, but you can try different values to see what works best for you.
-
-On my desktop I use 1.0 and on my laptop I use 1.5. So, yes, devices have different volume curves.
-
-# Acknowledgements
+## Acknowledgements
 - I borrowed windows.d for the WASPI bindings from here: https://github.com/ZILtoid1991/iota/tree/main/source/iota/audio/backend
-

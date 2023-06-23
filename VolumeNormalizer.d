@@ -30,6 +30,7 @@ import worker;
 import vumeter;
 import distributionmeter;
 import levelhistorymeter;
+import streamlistener;
 
 //version=decibels;
 import core.runtime;
@@ -84,6 +85,7 @@ class UI {
 
 	Button button;
 	Switch uiEnable;
+	ComboBoxText uiDevice;
 	Label uiDeviceInfo;
 	//Image distributionMeterImg;
 	//DistributionMeter distributionMeter;
@@ -107,6 +109,8 @@ class UI {
 
 
 	Worker worker;
+	StreamEndpoint[] endpoints;
+
 	bool wasRunning = true;
 
 	const levelCss = "
@@ -132,7 +136,8 @@ class UI {
 
 	void open() {
 		worker = new Worker();
-		win = new MainWindow("EZ Volume Normalizer 0.3  -  github.com/E-Zijlstra/ez-volume-normalizer");
+		endpoints = worker.stream.getEndpoints();
+		win = new MainWindow("EZ Volume Normalizer 0.4  -  github.com/E-Zijlstra/ez-volume-normalizer");
 		win.setDefaultSize(630, 300);
 		//win.addGlobalStyle("window {background: rgb(82,74,67);} spinbutton {background: rgb(82,74,67)}");
 
@@ -154,10 +159,19 @@ class UI {
 		mainCtlBar.add(new Label("Power"));
 		mainCtlBar.add(uiEnable = new Switch(), );
 		uiEnable.addOnStateSet(&onEnable);
-		mainCtlBar.add(uiDeviceInfo = new Label("No device"));
+
+		mainCtlBar.add(uiDevice = new ComboBoxText(false));
+		uiDevice.addOnChanged(&onDeviceChanged);
+		foreach(ep; endpoints) {
+			uiDevice.append(ep.id, ep.name);
+		}
+		uiDevice.setActive(cast(int) endpoints.countUntil!(ep => ep.isDefault));
+
+
+		mainCtlBar.add(uiDeviceInfo = new Label(""));
 
 		{	// input
-			Box frame = addFrame(vleft, "input / peaks");
+			Box frame = addFrame(vleft, "input");
 
 			frame.add(uiSignalVuImg = new Image());
 			uiSignalVu = new VuMeter(vleftWidth - 38, vuMeterHeight );
@@ -165,7 +179,13 @@ class UI {
 			uiSignalVuImg.setFromPixbuf(uiSignalVu.pixbuf);
 		}
 
-		{	// analyzer
+		{   // target
+			Box frame = addFrame(vleft, "normalizer target / limiter range");
+			frame.add(uiTargetLevel = new Scale(GtkOrientation.HORIZONTAL, 0, 1, 0.01));
+			uiTargetLevel.addOnValueChanged((Range r) { setOutputTarget(uiTargetLevel.getValue()); });
+		}
+
+		{	// normalizer
 			Box frame = addFrame(vleft, "Normalizer");
 			frame.setSpacing(5);
 
@@ -178,23 +198,21 @@ class UI {
 			levelHistoryMeter = new LevelHistoryMeter(vleftWidth - 38, 60, worker.levelHistory, worker.levelDistribution);
 			levelHistoryMeter.paint();
 			levelHistoryMeterImg.setFromPixbuf(levelHistoryMeter.pixbuf);
-		}
 
-		{
-			Box frame = addFrame(vleft, "target");
-			frame.add(uiTargetLevel = new Scale(GtkOrientation.HORIZONTAL, 0, 1, 0.01));
-			uiTargetLevel.addOnValueChanged((Range r) { setOutputTarget(uiTargetLevel.getValue()); });
-		}
+			Box hbox = new Box(GtkOrientation.HORIZONTAL, 0);
+			frame.add(hbox);
+			hbox.add(uiEnableVolume = new CheckButton("active", (CheckButton b){ worker.overrideVolume = !b.getActive();} ));
 
-		{
-			Box frame = addSmallFrame(vleft, "output");
 			frame.add(uiOutputVuImg = new Image());
 			uiOutputVu = new VuMeter(vleftWidth - 38, vuMeterHeight );
 			uiOutputVuImg.setFromPixbuf(uiOutputVu.pixbuf);
 			uiOutputVu.paint(0, worker.limitOutputStart, worker.limitOutputEndPreLimiter);
 		}
+
+
+
 		{   // limiter
-			Box frame = addSmallFrame(vleft, null, 10);
+			Box frame = addFrame(vleft, "Limiter");
 
 			frame.add(uiOutputLimitedVuImg = new Image());
 			uiOutputLimitedVu = new VuMeter(vleftWidth - 38, vuMeterHeight);
@@ -208,7 +226,7 @@ class UI {
 			Box hbox = new Box(GtkOrientation.HORIZONTAL, 0);
 			frame.add(hbox);
 			hbox.setBorderWidth(10); hbox.setSpacing(5);
-			uiEnableLimiter = wrapTopLabel(hbox, "limiter", new CheckButton(null, (CheckButton b){ worker.mLimiter.enabled = b.getActive();} ));
+			uiEnableLimiter = wrapTopLabel(hbox, "active", new CheckButton(null, (CheckButton b){ worker.mLimiter.enabled = b.getActive();} ));
 			uiLimiterStart = wrapTopLabel(hbox, "start", new SpinButton(0.1, 6, 0.01));
 			uiLimiterWidth = wrapTopLabel(hbox, "width", new SpinButton(0.01, 4, 0.01));
 			uiLimiterRelease = wrapTopLabel(hbox, "Release/s", new SpinButton(0.02, 1, 0.02));
@@ -251,12 +269,11 @@ class UI {
 			worker.lowVolumeBoost = c.getActiveText().to!float;
 		} );
 		volPane.add(uiLowVolumeBoost);
-		volPane.add(uiEnableVolume = new CheckButton("Auto", (CheckButton b){ worker.overrideVolume = !b.getActive();} ));
 
 		// default values
 		uiLimiterStart.setValue(1.2);
-		uiLimiterWidth.setValue(0.4);
-		uiLimiterRelease.setValue(0.12);
+		uiLimiterWidth.setValue(0.3);
+		uiLimiterRelease.setValue(0.10);
 		uiTargetLevel.setValue(0.18);
 		uiEnableLimiter.setActive(true);
 		uiEnableVolume.setActive(true);
@@ -271,6 +288,20 @@ class UI {
 	void onDestroy(Widget w) {
 		worker.stop();
 		Main.quit();
+	}
+
+	void onDeviceChanged(ComboBoxText combo) {
+		worker.stream.deviceId = combo.getActiveId();
+		info("device changed to", combo.getActiveId());
+		if (worker.state == Worker.State.running) {
+			worker.stop();
+			while(worker.state != Worker.State.stopped) {
+				import core.thread : Thread;
+				Thread.sleep(dur!"msecs"(1));
+			}
+			worker.start();
+		}
+		displayDeviceStatus();
 	}
 
 	void setLimiterThreshold() {
@@ -296,37 +327,47 @@ class UI {
 	MonoTime processingStartedAt;
 
 	bool onEnable(bool state, Switch sw) {
-		if (state && !worker.running) {
+		if (state && worker.state == Worker.State.stopped) {
 			// switch on
 			//worker = new Worker(); problem is that LevelHistoryMeter etc still has references to old worker.
 			worker.setOutputTarget(uiTargetLevel.getValue());
 			processingStartedAt = MonoTime.currTime;
 			worker.processedFrames = 0;
-			wasState = worker.state;
 			worker.start();
 		}
-		else if (worker) {
+		else if (worker && worker.state == Worker.State.running) {
 			worker.stop();
 			info("worker disabled");
 		}
 		return false;
 	}
 
-	Worker.State wasState = Worker.State.stopped;
-	bool isStatusChanged() {
-		Worker.State state = worker ? worker.state : Worker.State.stopped;
-		
-		bool yes = (state != wasState);
-		wasState = state;
-		return yes;
-	}
 
-	void displayStatus() {
-		if (!worker || !worker.running) {
-			uiDeviceInfo.setLabel("No device");
+	Worker.State wasState = Worker.State.stopped;
+
+	void displayDeviceStatus() {
+		Worker.State state = worker ? worker.state : Worker.State.stopped;
+
+		if (wasState == state) return;
+		wasState = state;
+
+		if (!worker) {
+			uiDeviceInfo.setLabel("Error");
+			return;
 		}
-		else {
-			uiDeviceInfo.setLabel(worker.stream.sampleRate.tos ~ "Hz, " ~ worker.stream.bps.tos ~ "b " );
+		switch(worker.state) {
+			case Worker.State.stopped:
+				uiDeviceInfo.setLabel("Stopped");
+				//uiEnable.setState(false);
+				break;
+			case Worker.State.starting: uiDeviceInfo.setLabel("Starting"); break;
+			case Worker.State.running:
+				uiDeviceInfo.setLabel(worker.stream.sampleRate.tos ~ "Hz, " ~ worker.stream.bps.tos ~ "b " );
+				//uiEnable.setState(true);
+				break;
+			case Worker.State.stopping: uiDeviceInfo.setLabel("Stopping"); break;
+			default:
+				assert(0);
 		}
 	}
 
@@ -370,12 +411,10 @@ class UI {
 	extern(C) nothrow static int idle(void* userData) {
 		try{
 			UI ui = cast(UI) userData;
-			if (ui.isStatusChanged()) ui.displayStatus();
+			ui.displayDeviceStatus();
 
 			if (ui.worker.state != Worker.State.stopped) {
 				ui.displayProcessing();
-			} else {
-				ui.uiEnable.setState(false);
 			}
 
 			return 1;

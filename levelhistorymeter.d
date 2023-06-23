@@ -71,6 +71,10 @@ class LevelHistoryMeter : VuMeterBase {
 
 			int height = cast(int)( levelMultiplier * level * mHeight + 0.5f);
 			if (classification == LevelDistribution.INCLUDED && height < 1) height = 1;
+			if (height > mHeight) {
+				info("height > mHeight: ", height, " > ", mHeight, "; level:", level, "; multiplier:", levelMultiplier);
+				height = mHeight;
+			}
 			paintVerticalLine(x, height, color, accentColor);
 
 			paintPixel(x, levelToY(levelHistory.averages[idx]), averageColor);
