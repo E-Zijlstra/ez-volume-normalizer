@@ -13,9 +13,15 @@ This normalizer is experimental and may blow up your speakers or ears.
 
 # Installing
 - Install GTKD runtime 3.24.8 from here: https://gtkd.org/Downloads/runtime/gtk3-runtime_3.24.8_64bit.exe
+  (It's needed for the GUI)
 - Run the executable that you find under releases, or compile the source code yourself. (see below)
 
 # Changelog
+v0.5
+ - Volume slider can be switched to log scale (decibels) (right click on slider)
+ - Added controls for delay and slowness. Previously these were fixed to 30 and 30.
+
+
 v0.4
  - Device selection
  - Rearranged UI
@@ -40,12 +46,23 @@ These can be fine tuned with the limiter start/width setting.
 ### Normalizer
 ![controls](doc/normalizer.png)
 
-The purple line is used to filter out soft passages. The bright green bars are the samples that are selected to determine the loudness of what is playing. The loudness is displayed as a yellow line.
+The normalizer controls the volume slider to make the loudness match the target level.
+If disabled then you can set the volume yourself.
+The meter displays the signal after being attenuated by the volume slider.
 
-The normalizer will control the volume slider to make the loudness match the target level.
-Disabling the normalizer allows you to manually set the volume with the volume slider.
+#### Settings
+ - delay: higher values will cause a delay before the normalizer starts ramping down the volume.
+ - slowness: higher values will make the normalizer move more slowely to the desired level.
 
-The meter displays the signal after being processed by the normalizer (or manually set volume)
+#### Graphic display
+Displays input signal over time. There are 5 bars per second.
+- Delay (in seconds) is the length of the purple moving average. Samples above the average will be bright green.
+- Slowness is the number of bright bars that are kept, older bars are discarded.
+- The bright bars that are left over are averaged to determine the loudness of what is playing. This is displayed as a yellow line.
+
+Use higher delay to make the normalizer ignore quiet parts.
+Use higher slowness to make the volume more stable.
+
 
 ### Limiter
 ![controls](doc/limiter.png)

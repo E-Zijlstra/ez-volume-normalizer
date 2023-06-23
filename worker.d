@@ -215,7 +215,7 @@ private:
 	void setEndpointVolume() {
 		import core.stdc.math: pow, cpow = pow;
 		float v = min(volume, mLimiter.limitedVolume);
-		if (abs(v-previousEndpointVolume) < 0.002) return;
+		if (abs(v-previousEndpointVolume) < 0.001) return;
 		previousEndpointVolume = v;
 
 		if (lowVolumeBoost != 1)

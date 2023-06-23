@@ -81,29 +81,33 @@ int main_(string[] args) {
 class UI {
 	const int vuMeterHeight = 20;
 	MainWindow win;
-	Image   uiSignalVuImg;
-	VuMeter uiSignalVu;
 
 	Button button;
 	Switch uiEnable;
 	ComboBoxText uiDevice;
 	Label uiDeviceInfo;
+	Image   uiSignalVuImg;
+	VuMeter uiSignalVu;
+	Scale uiTargetLevel;
+
+	CheckButton uiEnableNormalizer;
 	Image levelHistoryMeterImg;
 	LevelHistoryMeter levelHistoryMeter;
-	Scale uiTargetLevel;
+	Image uiOutputVuImg;
+	VuMeter uiOutputVu;
+	SpinButton uiAvgLength;
+	SpinButton uiNumLoudnessBars;
+
+	CheckButton uiEnableLimiter;
 	SpinButton uiLimiterStart;
 	SpinButton uiLimiterWidth;
 	SpinButton uiLimiterRelease;
-
-	Image uiOutputVuImg;
-	VuMeter uiOutputVu;
-	CheckButton uiEnableLimiter;
 	Image uiOutputLimitedVuImg;
 	VuMeter uiOutputLimitedVu;
 	LevelBar uiLimiter;
+
 	Label uiMasterDecibel;
 	Scale uiMasterVolume;
-	CheckButton uiEnableVolume;
 	ComboBoxText uiLowVolumeBoost;
 
 	Menu volumePopup;
@@ -138,7 +142,7 @@ class UI {
 	void open() {
 		worker = new Worker();
 		endpoints = worker.stream.getEndpoints();
-		win = new MainWindow("EZ Volume Normalizer 0.4  -  github.com/E-Zijlstra/ez-volume-normalizer");
+		win = new MainWindow("EZ Volume Normalizer 0.5  -  github.com/E-Zijlstra/ez-volume-normalizer");
 		win.setDefaultSize(630, 300);
 		//win.addGlobalStyle("window {background: rgb(82,74,67);} spinbutton {background: rgb(82,74,67)}");
 
@@ -204,9 +208,18 @@ class UI {
 			levelHistoryMeter.paint();
 			levelHistoryMeterImg.setFromPixbuf(levelHistoryMeter.pixbuf);
 
-			Box hbox = new Box(GtkOrientation.HORIZONTAL, 0);
+			Box hbox = new Box(GtkOrientation.HORIZONTAL, 6);
 			frame.add(hbox);
-			hbox.add(uiEnableVolume = new CheckButton("active", (CheckButton b){ worker.overrideVolume = !b.getActive();} ));
+			hbox.add(uiEnableNormalizer = new CheckButton("active", (CheckButton b){ worker.overrideVolume = !b.getActive();} ));
+
+			hbox.add(new Label("delay\n(seconds):"));
+			hbox.add(uiAvgLength = new SpinButton(1, 30, 1));
+			uiAvgLength.setMarginRight(15);
+			hbox.add(new Label("slowness\n(bars x5):"));
+			hbox.add(uiNumLoudnessBars = new SpinButton(1, 30, 1));
+			uiAvgLength.addOnValueChanged((SpinButton e) { worker.analyser.setAverageLength(cast(int)e.getValue()); });
+			uiNumLoudnessBars.addOnValueChanged((SpinButton e) { worker.analyser.setNumLoudnessBars(cast(int)e.getValue()); });
+
 
 			frame.add(uiOutputVuImg = new Image());
 			uiOutputVu = new VuMeter(vleftWidth - 38, vuMeterHeight );
@@ -289,8 +302,10 @@ class UI {
 		uiLimiterRelease.setValue(0.10);
 		uiTargetLevel.setValue(0.18);
 		uiEnableLimiter.setActive(true);
-		uiEnableVolume.setActive(true);
+		uiEnableNormalizer.setActive(true);
 		uiLowVolumeBoost.setActive(3);
+		uiAvgLength.setValue(10);
+		uiNumLoudnessBars.setValue(15);
 
 
 		gdk.Threads.threadsAddTimeout(15, &idle, cast(void*)(this));
@@ -442,6 +457,7 @@ class UI {
 			return 1;
 		} catch (Throwable t) {
 			try {
+				info(" ******* idle exception *******");
 				info(t.message);
 				info(t.file);
 				info(t.info);

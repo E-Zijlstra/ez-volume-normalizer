@@ -11,6 +11,7 @@ final class Analyser {
 	LoudnessComputer loudnessComputer;
 
 	Duration sampleDuration;
+	enum samplesPerSecond = 5; // 1000/5 = 200ms TODO make this configurable
 
 	this(int numSamples, int sampleDurationMs) {
 		sampleDuration = msecs(sampleDurationMs);
@@ -43,9 +44,14 @@ final class Analyser {
 		return levelHistory.accumulator;
 	}
 
-	private:
 
+	void setAverageLength(int seconds) {
+		levelFilter.averageLength = seconds*samplesPerSecond;
+	}
 
+	void setNumLoudnessBars(int seconds) {
+		loudnessComputer.numLoudnessBars = seconds * samplesPerSecond;
+	}
 }
 
 
@@ -148,6 +154,7 @@ final class LevelFilter {
 	}
 	ubyte[] sampleClassifications;
 	float[] averages;
+	int averageLength;
 
 	enum LOW = 1;
 	enum INCLUDED = 2;
@@ -174,11 +181,26 @@ final class LevelFilter {
 	}
 
 	void classifySamples() {
+		import std.range;
 		float[] samples = history.history;
 	
 		// compute average
 		maxLevel = samples.maxElement;
-		avgLevel = samples.sum / samples.length;
+		int startIdx = cast(int) history.writtenIdx;
+		startIdx = startIdx - averageLength + 1; // sampling one sample will make us start at writtenIdx
+		if (startIdx < 0) startIdx += samples.length;
+		//avgLevel = samples.cycle(startIdx).take(averageLength).sum / averageLength;
+		real sum = 0;
+		int count = 0;
+		foreach(s; samples.cycle(startIdx).take(averageLength)) {
+			if (s > 0.0005) { // ignore almost total silence -66 dB
+				sum += s;
+				count++;
+			}
+		}
+		if (count == 0) count = 1;
+		avgLevel = sum / count;
+
 		averages[history.writtenIdx] = avgLevel;
 
 
@@ -186,7 +208,7 @@ final class LevelFilter {
 		foreach(ref bucket; buckets) bucket = 0;
 
 		// count for each buckets how many times it has been hit by the signal
-		float threshold = avgLevel*0.9;
+		float threshold = avgLevel*0.95;
 		bucketMaxHits = 0;
 		int lowerBucketIdx = cast(int)(buckets.length - 1);
 		int upperBucketIdx = 0;
@@ -229,7 +251,8 @@ final class LevelFilter {
 		}
 
 		// the new range to classify samples
-		minIncludeLevel = max(0.001f, bucketLevel(lowerBucketIdx)); // 0.001 because sometimes there is a small signal when nothing is playing
+		//minIncludeLevel = max(0.001f, bucketLevel(lowerBucketIdx)); // 0.001 because sometimes there is a small signal when nothing is playing
+		minIncludeLevel = max(0.001f, threshold); // 0.001 because sometimes there is a small signal when nothing is playing
 		maxIncludeLevel = bucketLevel(maxIncludeBucketIdx+1);
 		maxLevel = bucketLevel(upperBucketIdx+1);
 
@@ -279,6 +302,8 @@ final class LoudnessComputer {
 	}
 	float[] history;
 	float loudness;
+	int numLoudnessBars;
+	int lastLoudnessBarIdx;
 
 	this(LevelHistory levHistory_, LevelFilter levFilter_) {
 		levHistory = levHistory_;
@@ -288,15 +313,25 @@ final class LoudnessComputer {
 
 	void computeLoudness() {
 		int sampleCount = 0;
+		int checkCount = 0;
 		real acc = 0;
-		foreach(i, ubyte classification; levFilter.sampleClassifications) {
+		int i = cast(int) levHistory.writtenIdx;
+		do {
+			ubyte classification = levFilter.sampleClassifications[i];
 			if (classification == LevelFilter.INCLUDED) {
 				sampleCount++;
 				acc += levHistory.history[i];
 			}
-		}
+			checkCount++;
+			i--;
+			if (i < 0) i = cast(int) levHistory.history.length - 1;
+		}while(sampleCount < numLoudnessBars && checkCount < levHistory.history.length);
+
 		if (sampleCount == 0) sampleCount = 1;
 		loudness = acc / sampleCount;
 		history[levHistory.writtenIdx] = loudness;
+
+		lastLoudnessBarIdx = i+1;
+		if (lastLoudnessBarIdx == levHistory.history.length) lastLoudnessBarIdx = 0;
 	}
 }

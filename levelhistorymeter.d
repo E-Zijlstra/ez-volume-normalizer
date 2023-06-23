@@ -13,7 +13,7 @@ class LevelHistoryMeter : VuMeterBase {
 
 		int xToHistoryIdx(int x) {
 			int idx = cast(int)( (cast(real)x) / mWidth * analyser.levelHistory.history.length );
-			idx += analyser.levelHistory.writeIdx;
+			idx += analyser.levelHistory.writeIdx; // at x = 0 this is the oldest sample (next to be overwritten)
 			idx %= analyser.levelHistory.history.length;
 			return idx;
 		}
@@ -27,9 +27,10 @@ class LevelHistoryMeter : VuMeterBase {
 
 	const RGBA bgColor = RGBA(0, 0, 64);
 	const RGBA ignoredColor = RGBA(0, 130, 0);
+	const RGBA discardedColor = RGBA(0, 140, 0);
 	const RGBA accountedColor = RGBA(0, 200, 0);
 	const RGBA peakColor = RGBA(180, 60, 0);
-	const RGBA averageColor = RGBA(128, 0, 128);
+	const RGBA averageColor = RGBA(200, 0, 200);
 	const RGBA loudnessColor = RGBA(200, 200, 0); // yellow
 
 	float levelMultiplier = 1f;
@@ -52,9 +53,12 @@ class LevelHistoryMeter : VuMeterBase {
 		else
 			levelMultiplier = 1f;
 
+		bool foundLastLoudnessBar = false;
 		foreach(x; 0 .. mWidth) {
 			int idx = xToHistoryIdx(x);
 			float level = analyser.levelHistory.history[idx];
+
+			if (idx == analyser.loudnessComputer.lastLoudnessBarIdx) foundLastLoudnessBar = true;
 	
 			RGBA color = accountedColor;
 			RGBA accentColor = color;
@@ -64,16 +68,24 @@ class LevelHistoryMeter : VuMeterBase {
 			}
 			else if (classification == LevelFilter.HIGH) {	
 				color = ignoredColor;
-				accentColor = peakColor;
+				accentColor = foundLastLoudnessBar ? peakColor : ignoredColor ;
+			}
+			else { // accounted
+				if (!foundLastLoudnessBar)
+					accentColor = color = discardedColor;
 			}
 
 			int height = cast(int)( levelMultiplier * level * mHeight + 0.5f);
 			if (classification == LevelFilter.INCLUDED && height < 1) height = 1;
-			if (height > mHeight) {
-				info("height > mHeight: ", height, " > ", mHeight, "; level:", level, "; multiplier:", levelMultiplier);
-				height = mHeight;
+			//if (height > mHeight) {
+			//    info("height > mHeight: ", height, " > ", mHeight, "; level:", level, "; multiplier:", levelMultiplier);
+			//    height = mHeight;
+			//}
+			try {
+				paintVerticalLine(x, height, color, accentColor);
+			}catch(Throwable e) {
+				info(e.message, "\n x:", x, "; height:", height, "; x: ", x, "; level:", level, "; multiplier:", levelMultiplier, "; idx:", idx);
 			}
-			paintVerticalLine(x, height, color, accentColor);
 
 			paintPixel(x, levelToY(analyser.levelFilter.averages[idx]), averageColor);
 			paintPixel(x, levelToY(analyser.loudnessComputer.history[idx]), loudnessColor);
