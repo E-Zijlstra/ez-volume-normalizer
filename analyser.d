@@ -9,6 +9,7 @@ final class Analyser {
 	LevelHistory levelHistory;
 	LevelFilter levelFilter;
 	LoudnessComputer loudnessComputer;
+	uint updateTicks;
 
 	Duration sampleDuration;
 	enum samplesPerSecond = 5; // 1000/5 = 200ms TODO make this configurable
@@ -28,6 +29,7 @@ final class Analyser {
 		if (historyChanged) {
 			levelFilter.classifySamples();
 			loudnessComputer.computeLoudness();
+			updateTicks++;
 		}
 		return historyChanged;
 	}
@@ -150,7 +152,6 @@ final class LevelFilter {
 		int[] buckets;
 		double bucketSize;
 		int bucketMaxHits = 0; // number of hits in the bucket with the most hits
-		float mLoudness = 0f;
 	}
 	ubyte[] sampleClassifications;
 	float[] averages;
@@ -224,10 +225,9 @@ final class LevelFilter {
 			}
 		}
 
-		// when history is empty, use the average
+		// when history is empty, use the full range
 		if (lowerBucketIdx > upperBucketIdx) {
 			bucketMaxHits = 0;
-			mLoudness = avgLevel;
 			minIncludeLevel = 0f;
 			maxIncludeLevel = 1f;
 			return;
@@ -327,8 +327,11 @@ final class LoudnessComputer {
 			if (i < 0) i = cast(int) levHistory.history.length - 1;
 		}while(sampleCount < numLoudnessBars && checkCount < levHistory.history.length);
 
-		if (sampleCount == 0) sampleCount = 1;
-		loudness = acc / sampleCount;
+		if (sampleCount <4)
+			loudness = levFilter.avgLevel;
+		else
+			loudness = acc / sampleCount;
+
 		history[levHistory.writtenIdx] = loudness;
 
 		lastLoudnessBarIdx = i+1;

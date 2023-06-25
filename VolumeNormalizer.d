@@ -210,9 +210,9 @@ class UI {
 
 			Box hbox = new Box(GtkOrientation.HORIZONTAL, 6);
 			frame.add(hbox);
-			hbox.add(uiEnableNormalizer = new CheckButton("active", (CheckButton b){ worker.overrideVolume = !b.getActive();} ));
+			hbox.add(uiEnableNormalizer = new CheckButton("active", (CheckButton b){ worker.setOverride(!b.getActive());} ));
 
-			hbox.add(new Label("delay\n(seconds):"));
+			hbox.add(new Label("down delay\n(seconds):"));
 			hbox.add(uiAvgLength = new SpinButton(1, 30, 1));
 			uiAvgLength.setMarginRight(15);
 			hbox.add(new Label("slowness\n(bars x5):"));
@@ -297,9 +297,9 @@ class UI {
 		volPane.add(uiLowVolumeBoost);
 
 		// default values
-		uiLimiterStart.setValue(1.2);
+		uiLimiterStart.setValue(1.15);
 		uiLimiterWidth.setValue(0.3);
-		uiLimiterRelease.setValue(0.10);
+		uiLimiterRelease.setValue(0.12);
 		uiTargetLevel.setValue(0.18);
 		uiEnableLimiter.setActive(true);
 		uiEnableNormalizer.setActive(true);
@@ -406,39 +406,41 @@ class UI {
 		if (scalar == autoSetVolume) return;
 
 		if (volumeSliderInDb)
-			worker.setVolumeDb(worker.stream.scalarToDb(scalar));
+			worker.setVolumeDb(worker.volumeInterpolator.map01ToDb(scalar));
 		else
 			worker.setVolume(scalar);
 	}
 
+	uint analyserUpdateTicks =99;
+
 	void displayProcessing() {
 		import std.math.exponential;
 		real v = worker.signal;
-		version(decibels) {
-			v = 20* log10(worker.peak);
-			v+= 60;
-		}
+
 		uiSignalVu.paint(v, worker.limitSignalStart, worker.limitSignalEnd);
 		uiSignalVuImg.setFromPixbuf(uiSignalVu.pixbuf);
 
-		levelHistoryMeter.paint();
-		levelHistoryMeterImg.setFromPixbuf(levelHistoryMeter.pixbuf);
+		if (worker.analyser.updateTicks != analyserUpdateTicks) {
+			analyserUpdateTicks = worker.analyser.updateTicks;
+			levelHistoryMeter.paint();
+			levelHistoryMeterImg.setFromPixbuf(levelHistoryMeter.pixbuf);
+		}
 
 		uiMasterDecibel.setLabel(format("%.1f dB", worker.actualVolumeDb));
 		if (volumeSliderInDb)
-			autoSetVolume = worker.stream.dbToScalar(worker.volumeDb);
+			autoSetVolume = worker.volumeInterpolator.mapDbTo01(worker.volumeInterpolator.volumeDb);
 		else
-			autoSetVolume = worker.volume;
+			autoSetVolume = worker.volumeInterpolator.volume;
 		uiMasterVolume.setValue(autoSetVolume);
 
-		float volumeDifference = clamp01(worker.volume - worker.mLimiter.limitedVolume);
+		float volumeDifference = clamp01(worker.volumeInterpolator.volume - worker.mLimiter.limitedVolume);
 		uiLimiter.setValue(volumeDifference);
 
 
-		uiOutputVu.paint(worker.volume * worker.signal, worker.limitOutputStart, worker.limitOutputEndPreLimiter);
+		uiOutputVu.paint(worker.normalizedSignal, worker.limitOutputStart, worker.limitOutputEndPreLimiter);
 		uiOutputVuImg.setFromPixbuf(uiOutputVu.pixbuf);
 
-		uiOutputLimitedVu.paint(worker.mLimiter.limitedVolume * worker.signal, worker.limitOutputStart, worker.limitOutputEnd);
+		uiOutputLimitedVu.paint(worker.limitedSignal, worker.limitOutputStart, worker.limitOutputEnd);
 		uiOutputLimitedVuImg.setFromPixbuf(uiOutputLimitedVu.pixbuf);
 
 	}

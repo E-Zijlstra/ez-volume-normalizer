@@ -30,16 +30,6 @@ struct StreamListener {
 	string deviceId;
 	float minDb, maxDb, incDb;
 
-	// returns a value between 0 and 1, where 0 equals minDb, and 1 equals maxDb
-	float dbToScalar(float db) {
-		return (db- minDb) / (maxDb - minDb);
-	}
-
-	// inverse of dbToScalar
-	float scalarToDb(float s) {
-		return s * (maxDb - minDb) + minDb;
-	}
-
 	IAudioEndpointVolume endpointVolume;
 	GUID volumeGuid;
 
@@ -60,12 +50,17 @@ struct StreamListener {
 		}
 	}
 
+	import std.math;
+
 	void setVolume(float v) {
+		// endpointVolume.SetMasterVolumeLevelScalar(v, volumeGuid);
+		float db = 20 * log10(v);
+		setVolumeDb(db);
+	}
+
+	void setVolumeDb(float db) {
 		if (!endpointVolume) return;
 
-		// endpointVolume.SetMasterVolumeLevelScalar(v, volumeGuid);
-		import std.math;
-		float db = 20 * log10(v);
 		if (db < minDb) db = minDb;
 		if (db > maxDb) db = maxDb;
 		if (abs(requestedDb-db)<0.5f) return;

@@ -11,6 +11,97 @@ import limiter, analyser;
 
 import util;
 
+
+struct VolumeInterpolator {
+	float tempoDb = 0.25;
+	float minStepDb = 0.25;
+	bool interpolate = true;
+
+	//float curve = 1.0;
+	float tempo = 0.1;
+
+	private {
+		StreamListener* mStream;
+		float mTarget = 0f;
+		float mTargetDb = -40f;
+		float mVolume = 0f;
+		float mVolumeDb = -40f;
+		float mMinVolume = 0;
+		float mMinVolumeDb = -40;
+	}
+
+	void setMinVolumeDb(float db) {
+		mMinVolumeDb = db;
+		mMinVolume = pow(10, db/20);
+	}
+
+	void setTarget(float v) {
+		if (v < 0.00001) v = 0.00001;
+		mTarget = v;
+		mTargetDb = 20*log10(v);
+		mTarget = max(mTarget, mMinVolume);
+		mTargetDb = max(mTargetDb, mMinVolumeDb);
+	}
+
+	void setTargetDb(float v) {
+		mTarget = pow(10, v/20);
+		mTargetDb = v;
+		mTarget = max(mTarget, mMinVolume);
+		mTargetDb = max(mTargetDb, mMinVolumeDb);
+	}
+
+	@property float volume() { return mVolume; }
+	@property float volumeDb() { return mVolumeDb; }
+
+	void tick() {
+		if (interpolate) {
+			interpolateDb();
+		}
+		else {
+			mVolume = mTarget;
+			mVolumeDb = mTargetDb;
+		}
+	}
+
+	// returns a value between 0 and 1, where 0 equals minDb, and 1 equals maxDb
+	float mapDbTo01(float db) {
+		enum maxDb = 0;
+		return (db- mMinVolumeDb) / (maxDb - mMinVolumeDb);
+	}
+
+	// inverse of mapDbTo01
+	float map01ToDb(float s) {
+		enum maxDb = 0;
+		return s * (maxDb - mMinVolumeDb) + mMinVolumeDb;
+	}
+
+	
+private:
+	void interpolateLinear() {
+		float v = mVolume + (mTarget - mVolume) * tempo;
+		mVolume = clamp01(v);
+		mVolumeDb = 20*log10(mVolume);
+	}
+
+	void interpolateDb() {
+		float diff = mTargetDb - mVolumeDb;
+		float aDiff = abs(diff);
+
+		if (aDiff <= minStepDb) {
+			mVolumeDb = mTargetDb;
+		}
+		else {
+			float sign = sgn(diff);
+			float step = aDiff * tempoDb;
+			step = max(step, minStepDb);
+			mVolumeDb += sign * step;
+		}
+
+		mVolume = pow(10, mVolumeDb/20);
+	}
+
+}
+
 class Worker {
 
 	// for slow processes (volume up/down, limiter release)
@@ -18,13 +109,12 @@ class Worker {
 	const tickInterval = dur!"msecs"(1000/ticksPerSecond);
 
 	shared {
-		float outputTarget; // where we want the final signal level to be.
+		float outputTarget = 0.18f; // where we want the final signal level to be.
 
 		long  processedFrames;
 
-		float volume;
 		float actualVolumeDb;
-		bool overrideVolume = false;
+		bool mOverrideVolume = false;
 
 		// -- limiter --
 		// range where the limiter starts to work, 1.25 means 125% of the volumeTarget
@@ -35,10 +125,8 @@ class Worker {
 	float lowVolumeBoost = 1;
 	Limiter mLimiter;
 	Analyser analyser;
+	VolumeInterpolator volumeInterpolator;
 
-	@property volumeDb() {
-		return 20*log10(volume);
-	}
 
 	void syncLimiter(void delegate(Limiter l) synchronizedAction) {
 		synchronized(mLimiter) {
@@ -53,7 +141,6 @@ class Worker {
 
 
 	this() {
-		volume = outputTarget = 0.3;
 		mLimiter = new Limiter();
 		mLimiter.ticksPerSecond = ticksPerSecond;
 		enum samplesPerSecond = 5; // 1000/5 = 200ms
@@ -69,7 +156,7 @@ class Worker {
 		while(stream.state == State.starting) {
 		}
 		// -36 is max attenuation when target is set to 0.01. Clip it so we can use the full range of the volume slider.
-		if (stream.minDb < -40) stream.minDb = -40;
+		volumeInterpolator.setMinVolumeDb(max(-40f, stream.minDb));
 
 	}
 
@@ -77,14 +164,31 @@ class Worker {
 		stream.stop();
 	}
 
+	void setOverride(bool yes) {
+		volumeInterpolator.interpolate = !yes;
+		mOverrideVolume = yes;
+	}
+
 	void setVolume(float v) {
-		volume = v;
+		with(volumeInterpolator) {
+			bool wasInterpolated = interpolate;
+			interpolate = false;
+			setTarget(v);
+			tick();
+			interpolate = wasInterpolated;
+		}
+
 		setEndpointVolume();
 	}
 
 	void setVolumeDb(float db) {
-		volume = pow(10, db/20);
-		//info("setVolumeDb: ", db, " -> ", volume);
+		with(volumeInterpolator) {
+			bool wasInterpolated = interpolate;
+			interpolate = false;
+			setTargetDb(db);
+			tick();
+			interpolate = wasInterpolated;
+		}
 		setEndpointVolume();
 	}
 
@@ -92,12 +196,20 @@ class Worker {
 		return analyser.visualLevel();
 	}
 
+	@property float normalizedSignal() {
+		return signal * volumeInterpolator.volume;
+	}
+
+	@property float limitedSignal() {
+		return signal * mLimiter.limitedVolume;
+	}
+
 	float getOutputTarget() { return this.outputTarget; }
 
-	public void setOutputTarget(double v) {
+	void setOutputTarget(double v) {
 		outputTarget = v;
 		if (outputTarget < 0.01) outputTarget = 0.01;
-		updateNormalizedVolume();
+		normalizeLoudness();
 	}
 
 	// --- limits / conversions
@@ -126,18 +238,17 @@ class Worker {
 	}
 
 	@property float limitSignalStart() {
-		return limitOutputStart/(volume+0.0001);
+		return limitOutputStart/(volumeInterpolator.volume+0.0001);
 	}
 
 	@property float limitSignalEnd() {
-		return limitOutputEndPreLimiter/(volume+0.0001);
+		return limitOutputEndPreLimiter/(volumeInterpolator.volume+0.0001);
 	}
 
 
 private:
 	Thread thread;
 	MonoTime now;
-	float normalizedVolume = 0;
 
 	void run() {
 		stream.loop(&processBlock);
@@ -151,19 +262,19 @@ private:
 		now = MonoTime.currTime;
 		float pk = floatDataToPeak(data, numFramesAvailable);
 
-		if (analyser.processLevel(pk)) {
-			updateNormalizedVolume();
+		bool loudnessChanged = analyser.processLevel(pk);
+		if (loudnessChanged) {
+			normalizeLoudness();
 		}
 
 		bool ticked = tick();
-		if (ticked) {
-			updateVolume();
-			actualVolumeDb = stream.getVolumeDb();
+		if (ticked && !mOverrideVolume) {
+			volumeInterpolator.tick();
 		}
 
 		synchronized(mLimiter) {
 			Limiter limiter = cast(Limiter)(mLimiter);
-			limiter.unlimitedVolume = volume;
+			limiter.unlimitedVolume = volumeInterpolator.volume;
 			limiter.limitT = limitT();
 			limiter.limitW = limitW();
 			if (ticked) limiter.release();
@@ -171,6 +282,9 @@ private:
 		}
 		
 		setEndpointVolume();
+		if (ticked) {
+			actualVolumeDb = stream.getVolumeDb();
+		}
 		
 		processedFrames = processedFrames + numFramesAvailable;
 	}
@@ -183,10 +297,11 @@ private:
 		return pk;
 	}
 
-	void updateNormalizedVolume() {
+	void normalizeLoudness() {
 		float loudness = analyser.loudness;
-		float vol2 = loudness > 0.001 ? outputTarget / loudness : 0.1; // use low volume when audio is silence
-		normalizedVolume = min(1f, vol2);
+		float ratio = loudness > 0.0001 ? outputTarget / loudness : 0.0001; // use low volume when audio is silence
+		ratio = min(1f, ratio);
+		volumeInterpolator.setTarget(ratio);
 	}
 
 	MonoTime lastTickExecuted;
@@ -198,23 +313,12 @@ private:
 
 	// --
 
-	// call on each tick
-	void updateVolume() {
-		if (volume == normalizedVolume || overrideVolume) return;
-
-		float vol2 = normalizedVolume;
-		float tempo = 0.1;
-		if (vol2 > volume) vol2 = (vol2 - volume)*tempo + volume; // increase volume
-		if (vol2 < volume) vol2 = volume - (volume - vol2) * tempo; // decrease volume
-
-		volume = min(1.0, vol2);
-	}
 
 	private float previousEndpointVolume = -1;
 		
 	void setEndpointVolume() {
 		import core.stdc.math: pow, cpow = pow;
-		float v = min(volume, mLimiter.limitedVolume);
+		float v = min(volumeInterpolator.volume, mLimiter.limitedVolume);
 		if (abs(v-previousEndpointVolume) < 0.001) return;
 		previousEndpointVolume = v;
 
