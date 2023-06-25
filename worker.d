@@ -32,19 +32,18 @@ struct VolumeInterpolator {
 
 	void setMinVolumeDb(float db) {
 		mMinVolumeDb = db;
-		mMinVolume = pow(10, db/20);
+		mMinVolume = toLinear(db);
 	}
 
 	void setTarget(float v) {
-		if (v < 0.00001) v = 0.00001;
 		mTarget = v;
-		mTargetDb = 20*log10(v);
+		mTargetDb = toDb(v);
 		mTarget = max(mTarget, mMinVolume);
 		mTargetDb = max(mTargetDb, mMinVolumeDb);
 	}
 
 	void setTargetDb(float v) {
-		mTarget = pow(10, v/20);
+		mTarget = toLinear(v);
 		mTargetDb = v;
 		mTarget = max(mTarget, mMinVolume);
 		mTargetDb = max(mTargetDb, mMinVolumeDb);
@@ -80,7 +79,7 @@ private:
 	void interpolateLinear() {
 		float v = mVolume + (mTarget - mVolume) * tempo;
 		mVolume = clamp01(v);
-		mVolumeDb = 20*log10(mVolume);
+		mVolumeDb = toDb(mVolume);
 	}
 
 	void interpolateDb() {
@@ -97,7 +96,7 @@ private:
 			mVolumeDb += sign * step;
 		}
 
-		mVolume = pow(10, mVolumeDb/20);
+		mVolume = toLinear(mVolumeDb);
 	}
 
 }
@@ -274,11 +273,11 @@ private:
 
 		synchronized(mLimiter) {
 			Limiter limiter = cast(Limiter)(mLimiter);
-			limiter.unlimitedVolume = volumeInterpolator.volume;
+			limiter.setCurrentVolume(volumeInterpolator.volume, volumeInterpolator.volumeDb);
 			limiter.limitT = limitT();
 			limiter.limitW = limitW();
 			if (ticked) limiter.release();
-			limiter.process(analyser.level);
+			limiter.process(now, analyser.level);
 		}
 		
 		setEndpointVolume();
@@ -314,18 +313,18 @@ private:
 	// --
 
 
-	private float previousEndpointVolume = -1;
+	private float previousEndpointVolume = 1;
 		
 	void setEndpointVolume() {
-		import core.stdc.math: pow, cpow = pow;
-		float v = min(volumeInterpolator.volume, mLimiter.limitedVolume);
-		if (abs(v-previousEndpointVolume) < 0.001) return;
-		previousEndpointVolume = v;
+		float db = min(volumeInterpolator.volumeDb, mLimiter.limitedVolumeDb);
+		if (abs(db-previousEndpointVolume) < 0.1) return;
+		previousEndpointVolume = db;
 
-		if (lowVolumeBoost != 1)
-			v = cpow(v, 1.0/lowVolumeBoost);
+		if (lowVolumeBoost != 1) {
+			db = db / lowVolumeBoost;
+		}
 
-		stream.setVolume(clamp01(v));
+		stream.setVolumeDb(db);
 	}
 
 

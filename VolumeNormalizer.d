@@ -102,6 +102,7 @@ class UI {
 	SpinButton uiLimiterStart;
 	SpinButton uiLimiterWidth;
 	SpinButton uiLimiterRelease;
+	SpinButton uiLimiterLookback;
 	Image uiOutputLimitedVuImg;
 	VuMeter uiOutputLimitedVu;
 	LevelBar uiLimiter;
@@ -247,10 +248,12 @@ class UI {
 			uiEnableLimiter = wrapTopLabel(hbox, "active", new CheckButton(null, (CheckButton b){ worker.mLimiter.enabled = b.getActive();} ));
 			uiLimiterStart = wrapTopLabel(hbox, "start", new SpinButton(0.1, 6, 0.01));
 			uiLimiterWidth = wrapTopLabel(hbox, "width", new SpinButton(0.01, 4, 0.01));
-			uiLimiterRelease = wrapTopLabel(hbox, "Release/s", new SpinButton(0.02, 1, 0.02));
-			uiLimiterStart.addOnValueChanged( (SpinButton e) { setLimiterThreshold(); } );
-			uiLimiterWidth.addOnValueChanged( (SpinButton e) { setLimiterThreshold(); } );
-			uiLimiterRelease.addOnValueChanged( (SpinButton e) { setLimiterThreshold(); } );
+			uiLimiterRelease = wrapTopLabel(hbox, "release (dB/s)", new SpinButton(0.5, 18, 0.5));
+			uiLimiterLookback = wrapTopLabel(hbox, "look back (ms)", new SpinButton(20, 10000, 10));
+			uiLimiterStart.addOnValueChanged( (SpinButton e) { setLimiterParameters(); } );
+			uiLimiterWidth.addOnValueChanged( (SpinButton e) { setLimiterParameters(); } );
+			uiLimiterRelease.addOnValueChanged( (SpinButton e) { setLimiterParameters(); } );
+			uiLimiterLookback.addOnValueChanged( (SpinButton e) { setLimiterParameters(); } );
 			uiLimiterStart.setDigits(2);
 			uiLimiterWidth.setDigits(2);
 			uiLimiterRelease.setDigits(2);
@@ -299,7 +302,8 @@ class UI {
 		// default values
 		uiLimiterStart.setValue(1.15);
 		uiLimiterWidth.setValue(0.3);
-		uiLimiterRelease.setValue(0.12);
+		uiLimiterRelease.setValue(6);
+		uiLimiterLookback.setValue(1000);
 		uiTargetLevel.setValue(0.18);
 		uiEnableLimiter.setActive(true);
 		uiEnableNormalizer.setActive(true);
@@ -332,11 +336,14 @@ class UI {
 		displayDeviceStatus();
 	}
 
-	void setLimiterThreshold() {
+	void setLimiterParameters() {
 		try {
 			worker.limiterStart = uiLimiterStart.getValue();
 			worker.limiterWidth = uiLimiterWidth.getValue();
-			worker.syncLimiter( (l) {l.releasePerSecond = uiLimiterRelease.getValue(); });
+			worker.syncLimiter( (l) {
+				l.releasePerSecond = uiLimiterRelease.getValue();
+				l.holdTimeMs = cast(uint) uiLimiterLookback.getValue();
+			});
 			updateLimiterMarks();
 		} catch(Exception e) {}
 	}
@@ -433,8 +440,9 @@ class UI {
 			autoSetVolume = worker.volumeInterpolator.volume;
 		uiMasterVolume.setValue(autoSetVolume);
 
-		float volumeDifference = clamp01(worker.volumeInterpolator.volume - worker.mLimiter.limitedVolume);
-		uiLimiter.setValue(volumeDifference);
+		//float volumeDifference = clamp01(worker.volumeInterpolator.volume - worker.mLimiter.limitedVolume);
+		float normalizedAttenuation = 1f - worker.volumeInterpolator.mapDbTo01(worker.mLimiter.attenuationDb);
+		uiLimiter.setValue(normalizedAttenuation);
 
 
 		uiOutputVu.paint(worker.normalizedSignal, worker.limitOutputStart, worker.limitOutputEndPreLimiter);

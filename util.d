@@ -52,9 +52,25 @@ T wrap(T)(T[] arr, int i) {
 	return arr[(i + arr.length) % arr.length];
 }
 
+import std.math;
+import core.stdc.math: cpow = pow; // std.math.pow only works for integers
 
+T toDb(T : float)(T t) {
+	if (t < 0.00001) t = 0.00001;
+	return 20 * log10(t);
+}
 
-// install a telnet logger
+T toLinear(T : float)(T t) {
+	return cpow(10, t / 20);
+}
+
+unittest {
+	assert(toDb(0.0) == -100);
+	assert(toDb(1.0) == 0);
+	assert(toLinear(toDb(1.0)) == 1);
+}
+
+// don't log in release build
 public import std.experimental.logger;
 import std.experimental.logger.core;
 import std.socket, std.stdio, std.concurrency;

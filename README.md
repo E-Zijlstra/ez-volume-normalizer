@@ -1,6 +1,6 @@
 
 # Overview
-This is an MS Windows volume normalizer.
+This is a volume normalizer for Microsoft Windows.
 It works by reducing the windows master volume, it can not boost your audio.
 - Requirements: 64 bit windows.
 - Tested on: Windows 10.
@@ -18,8 +18,14 @@ This normalizer is experimental and may blow up your speakers or ears.
 
 # Changelog
 v0.5
- - Volume slider can be switched to log scale (decibels) (right click on slider)
- - Added controls for delay and slowness. Previously these were fixed to 30 and 30.
+ - Volume slider can be switched to log/decibels scale (right click on slider)
+ - Added controls for delay and slowness. Previously these parameters were fixed to 30 and 30.
+ - Smoother & quicker volume control
+ - Limiter release is now in decibels
+ - Changed the red limiter bar to show attenuation (dB), instead of netto reduction in volume. It gave confusing visualization when the normalizer kicked in.
+ - Added limiter lookback parameter
+
+ See manual for more details on the new controls.
 
 
 v0.4
@@ -37,7 +43,7 @@ v0.3
 ### Target level
 ![controls](doc/target.png)
 
-This normalizer works by reducing the master volume.
+The normalizer works by reducing the master volume.
 Therefore you need to set target level to some low value, like 0.2; setting it to 1 effectively disables the normalizer.
 
 The slider also sets the limiter operating range, indicated with C and L.
@@ -52,7 +58,9 @@ The meter displays the signal after being attenuated by the volume slider.
 
 #### Settings
  - delay: higher values will cause a delay before the normalizer starts ramping down the volume.
- - slowness: higher values will make the normalizer move more slowely to the desired level.
+ - slowness: higher values will make the normalizer move more slowely to the desired level, but also make it more stable.
+
+For exact details read the next section.
 
 #### Graphic display
 Displays input signal over time. There are 5 bars per second.
@@ -60,8 +68,9 @@ Displays input signal over time. There are 5 bars per second.
 - Slowness is the number of bright bars that are kept, older bars are discarded.
 - The bright bars that are left over are averaged to determine the loudness of what is playing. This is displayed as a yellow line.
 
-Use higher delay to make the normalizer ignore quiet parts.
-Use higher slowness to make the volume more stable.
+##### Conclusion
+- Use higher delay to make the normalizer ignore quiet parts.
+- Use higher slowness to make the volume more stable.
 
 
 ### Limiter
@@ -71,9 +80,16 @@ The limiter starts compressing at C (or the orange area of the level meters) and
 
 The meter displays the signal after being processed by the limiter.
 If you want to see red here, you need to disable the limiter ;)
-Under the meter there is thin red bar, this the volume reduction applied by the limiter.
+Under the meter there is thin red bar, this is the reduction (dB) applied by the limiter.
 
 The limiter does not affect the volume slider, that would make it impossible to disable the normalizer and manually set the volume.
+
+#### Settings
+- start/width: operating range, relative to the target level.
+- release: how quickly to reduce the volume reduction
+- lookback: how far back to look for peaks, in millisecond. Higher values avoids pumping effects.
+  If you have low settings for the normalizer you won't notice much difference. Disable the normalizer and crank up the volume to see the effect.
+
 
 ### Low volume boost
 This may be useful or not. It changes the output volume curve.
