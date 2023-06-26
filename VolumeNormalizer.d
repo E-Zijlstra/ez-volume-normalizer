@@ -308,7 +308,7 @@ class UI {
 		uiEnableLimiter.setActive(true);
 		uiEnableNormalizer.setActive(true);
 		uiLowVolumeBoost.setActive(3);
-		uiAvgLength.setValue(10);
+		uiAvgLength.setValue(20);
 		uiNumLoudnessBars.setValue(15);
 
 

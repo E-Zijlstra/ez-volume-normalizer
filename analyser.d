@@ -60,7 +60,7 @@ final class Analyser {
 // short term shift buffer for an accurate visual reading of the level
 final class VisualPeak {
 	private {
-		enum timeSpanMs = 44; // 40 = 25fps; 48 = 20fps; 44 = 22fps
+		enum timeSpanMs = 40; // 40 = 25fps; 48 = 20fps; 44 = 22fps
 		enum numSamples = 4;
 		Duration sampleDuration = msecs(timeSpanMs/numSamples);
 		float[numSamples] samples;

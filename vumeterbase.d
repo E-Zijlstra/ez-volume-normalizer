@@ -22,7 +22,7 @@ final:
 	}
 
 	void paintBlock(int begin, int end, RGBA rgba_) {
-		uint rgba = rgba_.toAbgr;
+		uint rgba = rgba_.toUint;
 		int stride = mPixbuf.getRowstride() / 4;
 		char[] cdata = mPixbuf.getPixelsWithLength();
 		uint[] data = cast(uint[]) cdata;  // assuming rgba format ... (!)
@@ -37,7 +37,7 @@ final:
 	}
 
 	void paintVerticalLine(int x, RGBA rgba_) {
-		uint rgba = rgba_.toAbgr;
+		uint rgba = rgba_.toUint;
    		int stride = mPixbuf.getRowstride() / 4;
 		char[] cdata = mPixbuf.getPixelsWithLength();
 		uint[] data = cast(uint[]) cdata;  // assuming rgba format ... (!)
@@ -50,8 +50,8 @@ final:
 	}
 
 	void paintVerticalLine(int x, int height, RGBA barColor, RGBA accentColor) {
-		uint barRgba = barColor.toAbgr;
-		uint accentRgba = accentColor.toAbgr;
+		uint barRgba = barColor.toUint;
+		uint accentRgba = accentColor.toUint;
 	   	int stride = mPixbuf.getRowstride() / 4;
 		char[] cdata = mPixbuf.getPixelsWithLength();
 		uint[] data = cast(uint[]) cdata;  // assuming rgba format ... (!)
@@ -69,7 +69,7 @@ final:
 
 	void paintPixel(int x, int y, RGBA color) {
 		y = mHeightMinusOne - y;
-		uint rgba = color.toAbgr;
+		uint rgba = color.toUint;
 		int idx = y * mPixbuf.getRowstride() / 4 + x;
 		char[] cdata = mPixbuf.getPixelsWithLength();
 		uint[] data = cast(uint[]) cdata;  // assuming rgba format ... (!)

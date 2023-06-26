@@ -109,8 +109,8 @@ private:
 	}
 
 	void fillLeds(int begin, int end, RGBA rgba_, RGBA rasterColor_) {
-		uint rgba = rgba_.toAbgr;
-		uint rasterColor = rasterColor_.toAbgr;
+		uint rgba = rgba_.toUint;
+		uint rasterColor = rasterColor_.toUint;
 		int stride = mPixbuf.getRowstride() /4;
 		char[] cdata = mPixbuf.getPixelsWithLength();
 		uint[] data = cast(uint[]) cdata;  // assuming rgba format ... (!)

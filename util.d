@@ -15,10 +15,12 @@ struct RGBA {
 	ubyte r;
 	ubyte g;
 	ubyte b;
+	ubyte a;
 	this(ubyte r_, ubyte g_, ubyte b_) {
 		this.r = r_;
 		this.g = g_;
 		this.b = b_;
+		a = 0xff;
 	}
 	// multiply by a float
 	RGBA opBinary(string op : "*")(float f) const {
@@ -29,21 +31,10 @@ struct RGBA {
 		);
 	}
 
-	uint toRgba() {
-		return
-			(r << 24)
-			+ (g << 16)
-			+ (b << 8)
-			+ 0xff;
+	uint toUint() {
+		uint* data = cast(uint*)(&r);
+		return *data;
 	}
-	uint toAbgr() {
-		return r
-			+ (g << 8)
-			+ (b << 16)
-			+ 0xff000000;
-	}
-
-	alias toRgba this;
 }
 
 
