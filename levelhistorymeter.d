@@ -35,23 +35,23 @@ class LevelHistoryMeter : VuMeterBase {
 
 	float levelMultiplier = 1f;
 
-	bool zoom2x, zoom4x;
 
 	void paint() {
+		import std.algorithm : min, max;
 		paintBlock(0, mWidth, bgColor);
 
-		if (analyser.levelFilter.maxLevel < 0.5) zoom2x = true;
-		if (analyser.levelFilter.maxLevel < 0.25) zoom4x = true;
-
-		if (zoom2x && analyser.levelFilter.maxLevel > 0.6) zoom2x = false;
-		if (zoom4x && analyser.levelFilter.maxLevel > 0.35) zoom4x = false;
-
-		if (zoom4x)
-			levelMultiplier = 1f/0.35; // 1/0.35 = 2.857
-		else if (zoom2x)
-			levelMultiplier = 1f/0.6;  // 1/0.6 = 1.6666
-		else
-			levelMultiplier = 1f;
+		float zoomTarget = 1f / max(0.001, analyser.levelFilter.maxLevel);
+		if (zoomTarget < levelMultiplier) {
+			if (zoomTarget < 1.2) zoomTarget = 1f;
+			levelMultiplier = zoomTarget;
+			//info("unzoom ", levelMultiplier);
+		}
+		// slowely increase zoom
+		else if (zoomTarget-0.6 > levelMultiplier) { // 0.6 hysteresis
+			float step = max(0.01, (zoomTarget - levelMultiplier) / 10); // 0.01 minimum step
+			levelMultiplier = min(zoomTarget-0.3, levelMultiplier+step); // min(-0.3) to avoid overzooming
+			//info("zoom ", levelMultiplier);
+		}
 
 		bool foundLastLoudnessBar = false;
 		foreach(x; 0 .. mWidth) {
@@ -77,10 +77,7 @@ class LevelHistoryMeter : VuMeterBase {
 
 			int height = cast(int)( levelMultiplier * level * mHeight + 0.5f);
 			if (classification == LevelFilter.INCLUDED && height < 1) height = 1;
-			//if (height > mHeight) {
-			//    info("height > mHeight: ", height, " > ", mHeight, "; level:", level, "; multiplier:", levelMultiplier);
-			//    height = mHeight;
-			//}
+
 			try {
 				paintVerticalLine(x, height, color, accentColor);
 			}catch(Throwable e) {
