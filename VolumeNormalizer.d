@@ -143,7 +143,7 @@ class UI {
 	void open() {
 		worker = new Worker();
 		endpoints = worker.stream.getEndpoints();
-		win = new MainWindow("EZ Volume Normalizer 0.5  -  github.com/E-Zijlstra/ez-volume-normalizer");
+		win = new MainWindow("EZ Volume Normalizer 0.5c  -  github.com/E-Zijlstra/ez-volume-normalizer");
 		win.setDefaultSize(630, 300);
 		//win.addGlobalStyle("window {background: rgb(82,74,67);} spinbutton {background: rgb(82,74,67)}");
 
@@ -327,10 +327,6 @@ class UI {
 		info("device changed to", combo.getActiveId());
 		if (worker.state == Worker.State.running) {
 			worker.stop();
-			while(worker.state != Worker.State.stopped) {
-				import core.thread : Thread;
-				Thread.sleep(dur!"msecs"(1));
-			}
 			worker.start();
 		}
 		displayDeviceStatus();

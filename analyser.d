@@ -18,7 +18,7 @@ final class Analyser {
 		sampleDuration = msecs(sampleDurationMs);
 		visualPeak = new VisualPeak();
 		levelHistory = new LevelHistory(numSamples, sampleDuration);
-		levelFilter = new LevelFilter(levelHistory, 256);
+		levelFilter = new LevelFilter(levelHistory);
 		loudnessComputer = new LoudnessComputer(levelHistory, levelFilter);
 	}
 
@@ -143,15 +143,10 @@ public:
 }
 
 
-// Divides the range of level values into N buckets.
-// It counts the number of hits in each bucket reached by the signal level.
+// Classifies samples.
 final class LevelFilter {
 	private {
 		LevelHistory history;
-		int numBuckets;
-		int[] buckets;
-		double bucketSize;
-		int bucketMaxHits = 0; // number of hits in the bucket with the most hits
 	}
 	ubyte[] sampleClassifications;
 	float[] averages;
@@ -171,11 +166,8 @@ final class LevelFilter {
 
 	// ----------------
 
-	this(LevelHistory history_, int numBuckets_) {
+	this(LevelHistory history_) {
 		history = history_;
-		numBuckets = numBuckets_;
-		buckets.length = numBuckets;
-		bucketSize = 1.0 / numBuckets;
 		sampleClassifications.length = history.history.length;
 		averages.length = history.history.length;
 		foreach(ref h; averages) h = 0f;
@@ -190,7 +182,6 @@ final class LevelFilter {
 		int startIdx = cast(int) history.writtenIdx;
 		startIdx = startIdx - averageLength + 1; // sampling one sample will make us start at writtenIdx
 		if (startIdx < 0) startIdx += samples.length;
-		//avgLevel = samples.cycle(startIdx).take(averageLength).sum / averageLength;
 		real sum = 0;
 		int count = 0;
 		foreach(s; samples.cycle(startIdx).take(averageLength)) {
@@ -201,92 +192,34 @@ final class LevelFilter {
 		}
 		if (count == 0) count = 1;
 		avgLevel = sum / count;
-
 		averages[history.writtenIdx] = avgLevel;
-
-
-
-		foreach(ref bucket; buckets) bucket = 0;
-
-		// count for each buckets how many times it has been hit by the signal
 		float threshold = avgLevel*0.95;
-		bucketMaxHits = 0;
-		int lowerBucketIdx = cast(int)(buckets.length - 1);
-		int upperBucketIdx = 0;
-		foreach(float level; samples) {
-			if (level < threshold) continue;	
 
-			int bucketIdx = bucketIdx(level);
-			if (bucketIdx >= 0) {
-				buckets[bucketIdx] = buckets[bucketIdx] + 1;
-				lowerBucketIdx = min(lowerBucketIdx, bucketIdx);
-				upperBucketIdx = max(upperBucketIdx, bucketIdx);
-				bucketMaxHits = max(bucketMaxHits, buckets[bucketIdx]);
+	
+		// ignore the max sample
+		maxLevel = samples.maxElement;
+		maxIncludeLevel = -1f;
+		foreach(i, float level; samples) {
+			if (level < maxLevel && level > maxIncludeLevel) {
+				maxIncludeLevel = level;
 			}
 		}
-
-		// when history is empty, use the full range
-		if (lowerBucketIdx > upperBucketIdx) {
-			bucketMaxHits = 0;
+		if (maxIncludeLevel == -1) {
 			minIncludeLevel = 0f;
 			maxIncludeLevel = 1f;
 			return;
 		}
+		minIncludeLevel = max(0.0005f, threshold); // 0.001 because sometimes there is a small signal when nothing is playing
 
-		// accumulate hits to lower buckets
-		bucketMaxHits = 0;
-		foreach_reverse(ref bucket; buckets[lowerBucketIdx .. upperBucketIdx+1]) {
-			bucketMaxHits += bucket;
-			bucket = bucketMaxHits;
-		}
-
-		// ignore levels that are hit less than 5% than the most hit level
-		int minHits = cast(int) (bucketMaxHits * 0.05);
-		int maxIncludeBucketIdx = 0;
-		foreach(i, ref hits; buckets[lowerBucketIdx .. upperBucketIdx+1]) {
-			if (hits > minHits) {
-				int bucketIdx = cast(int)(i + lowerBucketIdx);
-				if (bucketIdx > maxIncludeBucketIdx) maxIncludeBucketIdx = bucketIdx;
-			}
-		}
-
-		// the new range to classify samples
-		//minIncludeLevel = max(0.001f, bucketLevel(lowerBucketIdx)); // 0.001 because sometimes there is a small signal when nothing is playing
-		minIncludeLevel = max(0.001f, threshold); // 0.001 because sometimes there is a small signal when nothing is playing
-		maxIncludeLevel = bucketLevel(maxIncludeBucketIdx+1);
-		maxLevel = bucketLevel(upperBucketIdx+1);
 
 		// classify the new sample
 		size_t lastSampleIdx = history.writtenIdx;
 		float s = samples[lastSampleIdx];
 		ubyte c = LOW;
 		if (s > minIncludeLevel) c = INCLUDED;
-		if (s >= maxIncludeLevel) c = HIGH;
+		if (s > maxIncludeLevel) c = HIGH;
 		sampleClassifications[history.writtenIdx] = c;
 
-	}
-
-	int levelHitCount(float level) {
-		int bucketIdx = bucketIdx(level);
-		if (bucketIdx < 0) return 0;
-		return buckets[bucketIdx];
-	}
-
-	float levelHitCountNormalized(float level) {
-		int bucketIdx = bucketIdx(level);
-		if (bucketIdx < 0) return 0;
-		return buckets[bucketIdx] / (cast(float) bucketMaxHits + 0.00001);
-	}
-
-	float bucketLevel(size_t bucketIdx) {
-		return bucketIdx * bucketSize;
-	}
-
-	// returns -1 if level <= 0
-	int bucketIdx(float level) {
-		import std.math;
-		int b = (cast(int)(ceil(level / bucketSize))) -1;
-		return b < numBuckets ? b : numBuckets -1 ;
 	}
 
 	ubyte sampleClassification(int idx) {

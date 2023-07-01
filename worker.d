@@ -161,6 +161,9 @@ class Worker {
 
 	void stop() {
 		stream.stop();
+		while(stream.state != State.stopped) {
+			Thread.sleep(dur!"msecs"(1));
+		}
 	}
 
 	void setOverride(bool yes) {
