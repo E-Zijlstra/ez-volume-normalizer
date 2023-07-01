@@ -50,17 +50,19 @@ final:
 	}
 
 	void paintVerticalLine(int x, int height, RGBA barColor, RGBA accentColor) {
+		if (height <= 0) return;
+
 		uint barRgba = barColor.toUint;
 		uint accentRgba = accentColor.toUint;
 	   	int stride = mPixbuf.getRowstride() / 4;
 		char[] cdata = mPixbuf.getPixelsWithLength();
 		uint[] data = cast(uint[]) cdata;  // assuming rgba format ... (!)
 
-		int idx = (mHeight-1 - height) * stride + x;
-		if (height > 0) {
-			data[idx] = accentRgba;
-			idx += stride;
-		}
+		int idx = (mHeight - height) * stride + x;
+
+		data[idx] = accentRgba;
+		idx += stride;
+
 		foreach(y_; 1..height) {
   			data[idx] = barRgba;
 			idx += stride;
