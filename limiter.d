@@ -8,6 +8,7 @@ import std.algorithm.iteration;
 import util;
 
 import core.time;
+import lookback;
 
 final class Limiter {
 	// settings
@@ -16,45 +17,46 @@ final class Limiter {
 	float releasePerSecond = 0.2;
 	float limitT = 0.5;
 	float limitW = 0.1;
-	uint holdTimeMs = 500;
+	float limitTdb = 0.5;
+	float limitWdb = 0.1;
 
 	// outputs
 	float attenuationDb = 0;
 	float limitedVolumeDb = 0f;
 
 	private {
-		float[4] holdBuffer;
-		int holdBufferIdx = 0;
-		MonoTime holdSlotWrittenAt = MonoTime.zero;
-
+		Lookback hold;
 		float unlimitedVolume = 1f;
 		float unlimitedVolumeDb = 0;
-
-
 	}
 
-	@property uint holdSlotTimeMs() {
-		return holdTimeMs / holdBuffer.length + 1;
-	}
-
-	void writeHistory(MonoTime now, float level) {
-		float current = holdBuffer[holdBufferIdx] = max(holdBuffer[holdBufferIdx], level);
-
-		ulong msPassed = (now - holdSlotWrittenAt).total!"msecs";
-		ulong slotsPassed = min(holdBuffer.length, msPassed / holdSlotTimeMs);
-		for(int i=0; i<slotsPassed; i++) {
-			holdBufferIdx++;
-			if (holdBufferIdx >= holdBuffer.length) holdBufferIdx = 0;
-			holdBuffer[holdBufferIdx] = current;
-		}
-		if (slotsPassed > 0) {
-			holdSlotWrittenAt = now;
-			holdBuffer[holdBufferIdx] = 0;
-		}
+	@property void holdTimeMs(uint ms) {
+		hold.totalMs = ms;
 	}
 
 	this() {
 	}
+
+	@property void Tdb(float t) {
+		limitTdb = t;
+		limitT = toLinear(t);
+		info("limitT ", limitT);
+	}
+
+	@property void Wdb(float t) {
+		limitWdb = t;
+		limitW = toLinear(t) - 1f;
+		info("limitW ", limitW);
+	}
+
+	@property float Tdb() {
+		return limitTdb;
+	}
+
+	@property float Wdb() {
+		return limitWdb;
+	}
+
 
 	void setCurrentVolume(float linear, float db) {
 		unlimitedVolumeDb = db;
@@ -66,9 +68,7 @@ final class Limiter {
 	}
 
 	void process(MonoTime now, float inputSignal) {
-		//holdBuffer[holdBufferIdx++] = inputSignal;
-		//if (holdBufferIdx >= holdBuffer.length) holdBufferIdx = 0;
-		writeHistory(now, inputSignal);
+		hold.put(now, inputSignal);
 
 		if (!enabled) {
 			limitedVolumeDb = unlimitedVolumeDb;
@@ -76,7 +76,7 @@ final class Limiter {
 			return;
 		}
 
-		real signal = unlimitedVolume * holdBuffer[].maxElement;
+		real signal = unlimitedVolume * hold.maxValue;
 		real limited = softKneeLimit(signal);
 		//real attn = toDb(limited) - toDb(signal);
 		real attn = toDb(limited/signal);

@@ -509,6 +509,8 @@
   <File path="levelhistorymeter.d" />
   <File path="LICENSE.md" />
   <File path="limiter.d" />
+  <File path="lookback.d" />
+  <File path="main.d" />
   <File path="README.md" />
   <File path="streamlistener.d" />
   <File path="util.d" />

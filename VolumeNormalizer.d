@@ -33,52 +33,27 @@ import vumeter;
 import levelhistorymeter;
 import streamlistener;
 
-//version=decibels;
+version=useDecibels;
 import core.runtime;
 import core.sys.windows.windows;
 import std.string;
 
-// oncycle=ignore: if not ignored static constructors will trigger module dependency cycles
-extern(C) __gshared string[] rt_options = [ "oncycle=ignore", "testmode=run-main" ];
-
-
-debug {
-	int main(string[] args) {
-		main_(args);
-		//readln();
-
-		return 0;
-	}
-}
-else {
-	extern (Windows)int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
-				LPSTR lpCmdLine, int nCmdShow)
-	{
-		int result;
-
-		try {
-			Runtime.initialize();
-			result = main_([]);
-			Runtime.terminate();
-		}
-		catch (Throwable e) {
-			MessageBoxA(null, e.toString().toStringz(), null, MB_ICONEXCLAMATION);
-			result = 0;     // failed
-		}
-
-		return result;
-	}
-}
-
-int main_(string[] args) {
-	Main.init(args);
-	auto ui = new UI();
-	ui.open();
-	Main.run();
-	return 0;
-}
-
 class UI {
+	static void start(string[] args) {
+		Main.init(args);
+		auto ui = new UI();
+		ui.open();
+		Main.run();
+	}
+
+	// for controls, meters
+	//enum minDb = -60;
+
+	@property minDb() {
+		return VolumeInterpolator.minimumVolumeDbCutOff;
+		// return worker.volumeInterpolator.minVolumeDb;
+	}
+
 	const int vuMeterHeight = 20;
 	MainWindow win;
 
@@ -143,7 +118,7 @@ class UI {
 	void open() {
 		worker = new Worker();
 		endpoints = worker.stream.getEndpoints();
-		win = new MainWindow("EZ Volume Normalizer 0.5c  -  github.com/E-Zijlstra/ez-volume-normalizer");
+		win = new MainWindow("EZ Volume Normalizer 0.6  -  github.com/E-Zijlstra/ez-volume-normalizer");
 		win.setDefaultSize(630, 300);
 		//win.addGlobalStyle("window {background: rgb(82,74,67);} spinbutton {background: rgb(82,74,67)}");
 
@@ -167,23 +142,26 @@ class UI {
 		leftrightSplit.add(vleft = new Box(GtkOrientation.VERTICAL, 0));
 		vleft.setProperty("width-request", vleftWidth);
 
-		auto mainCtlBar = new Box(GtkOrientation.HORIZONTAL, 0);
-		vleft.add(mainCtlBar);
-		mainCtlBar.setBorderWidth(10);
-		mainCtlBar.setSpacing(5);
-		mainCtlBar.add(new Label("Power"));
-		mainCtlBar.add(uiEnable = new Switch(), );
-		uiEnable.addOnStateSet(&onEnable);
+		{	// device bar
+			auto frame = new Box(GtkOrientation.HORIZONTAL, 0);
+			vleft.add(frame);
+			frame.setBorderWidth(10);
+			frame.setSpacing(5);
+			frame.add(new Label("Power"));
+			frame.add(uiEnable = new Switch(), );
+			uiEnable.addOnStateSet(&onEnable);
 
-		mainCtlBar.add(uiDevice = new ComboBoxText(false));
-		uiDevice.addOnChanged(&onDeviceChanged);
-		foreach(ep; endpoints) {
-			uiDevice.append(ep.id, ep.name);
+			frame.add(uiDevice = new ComboBoxText(false));
+			uiDevice.addOnChanged(&onDeviceChanged);
+			foreach(ep; endpoints) {
+				uiDevice.append(ep.id, ep.name);
+			}
+			uiDevice.setActive(cast(int) endpoints.countUntil!(ep => ep.isDefault));
+
+			frame.add(uiDeviceInfo = new Label(""));
+
+			frame.add(uiMasterDecibel = new Label("0 dB"));
 		}
-		uiDevice.setActive(cast(int) endpoints.countUntil!(ep => ep.isDefault));
-
-
-		mainCtlBar.add(uiDeviceInfo = new Label(""));
 
 		{	// input
 			Box frame = addFrame(vleft, "input");
@@ -196,7 +174,11 @@ class UI {
 
 		{   // target
 			Box frame = addFrame(vleft, "normalizer target / limiter range");
-			frame.add(uiTargetLevel = new Scale(GtkOrientation.HORIZONTAL, 0.01, 1, 0.01));
+			version(useDecibels) {
+				frame.add(uiTargetLevel = new Scale(GtkOrientation.HORIZONTAL, minDb, 0, 1));
+			}else {
+				frame.add(uiTargetLevel = new Scale(GtkOrientation.HORIZONTAL, 0.01, 1, 0.01));
+			}
 			uiTargetLevel.addOnValueChanged((Range r) { setOutputTarget(uiTargetLevel.getValue()); });
 		}
 
@@ -268,12 +250,14 @@ class UI {
 
 		{
 			Box volCtrl = volPane;
-			//volPane.add(volCtrl = new Box(GtkOrientation.HORIZONTAL, 0));
-			volCtrl.add(uiMasterDecibel = new Label("0 dB"));
-			volCtrl.add(uiMasterVolume = new Scale(GtkOrientation.VERTICAL, 0, 1, 0.05));
+			version(useDecibels) {
+				volCtrl.add(uiMasterVolume = new Scale(GtkOrientation.VERTICAL, minDb, 0, 1));
+			} else {
+				volCtrl.add(uiMasterVolume = new Scale(GtkOrientation.VERTICAL, 0, 1, 0.05));
+			}
 			uiMasterVolume.setVexpand(true);
 			uiMasterVolume.setInverted(true);
-			uiMasterVolume.setDrawValue(false);
+			uiMasterVolume.setDrawValue(true);
 			uiMasterVolume.addOnValueChanged(&volumeSliderChanged);
 			uiMasterVolume.addOnButtonPress( (GdkEventButton* b, Widget) {
 				if(b.button == 3) {
@@ -299,22 +283,22 @@ class UI {
 		} );
 		volPane.add(uiLowVolumeBoost);
 
+		gdk.Threads.threadsAddTimeout(15, &idle, cast(void*)(this));
+		win.addOnDestroy(&onDestroy);
+		win.showAll();
+
 		// default values
 		uiLimiterStart.setValue(1.15);
 		uiLimiterWidth.setValue(0.3);
 		uiLimiterRelease.setValue(6);
 		uiLimiterLookback.setValue(1000);
-		uiTargetLevel.setValue(0.18);
+		uiTargetLevel.setValue(-14);
 		uiEnableLimiter.setActive(true);
 		uiEnableNormalizer.setActive(true);
 		uiLowVolumeBoost.setActive(3);
 		uiAvgLength.setValue(20);
 		uiNumLoudnessBars.setValue(15);
 
-
-		gdk.Threads.threadsAddTimeout(15, &idle, cast(void*)(this));
-		win.addOnDestroy(&onDestroy);
-		win.showAll();
 	}
 
 	void onDestroy(Widget w) {
@@ -340,19 +324,26 @@ class UI {
 				l.releasePerSecond = uiLimiterRelease.getValue();
 				l.holdTimeMs = cast(uint) uiLimiterLookback.getValue();
 			});
-			updateLimiterMarks();
+			showLimiterMarks();
 		} catch(Exception e) {}
 	}
 
-	void updateLimiterMarks() {
+	void showLimiterMarks() {
 		uiTargetLevel.clearMarks();
 		uiTargetLevel.addMark(min(1, worker.limitOutputStart), GtkPositionType.BOTTOM, "C");
 		uiTargetLevel.addMark(min(1, worker.limitOutputEnd), GtkPositionType.BOTTOM, "L");
 	}
 
 	void setOutputTarget(float value) {
-		worker.setOutputTarget(value); 
-		updateLimiterMarks();
+		version(useDecibels) {
+			info("target changed", value);
+			worker.setOutputTargetDb(value);
+		}
+		else {
+			worker.setOutputTarget(value); 
+		}
+		setLimiterParameters();
+		showLimiterMarks();
 	}
 
 	MonoTime processingStartedAt;
@@ -361,7 +352,11 @@ class UI {
 		if (state && worker.state == Worker.State.stopped) {
 			// switch on
 			//worker = new Worker(); problem is that LevelHistoryMeter etc still has references to old worker.
-			worker.setOutputTarget(uiTargetLevel.getValue());
+			version(useDecibels) {
+				worker.setOutputTargetDb(uiTargetLevel.getValue());
+			}else {
+				worker.setOutputTarget(uiTargetLevel.getValue());
+			}
 			processingStartedAt = MonoTime.currTime;
 			worker.processedFrames = 0;
 			worker.start();
@@ -402,16 +397,21 @@ class UI {
 		}
 	}
 
-	float autoSetVolume = 0;
+	float autoSetVolume = 1;
 
 	void volumeSliderChanged(Range r) {
 		float scalar = uiMasterVolume.getValue();
 		if (scalar == autoSetVolume) return;
 
-		if (volumeSliderInDb)
-			worker.setVolumeDb(worker.volumeInterpolator.map01ToDb(scalar));
-		else
-			worker.setVolume(scalar);
+		version(useDecibels) {
+			worker.setVolumeDb(scalar);
+		}
+		else {
+			if (volumeSliderInDb)
+				worker.setVolumeDb(worker.volumeInterpolator.map01ToDb(scalar));
+			else
+				worker.setVolume(scalar);
+		}
 	}
 
 	uint analyserUpdateTicks =99;
@@ -430,10 +430,15 @@ class UI {
 		}
 
 		uiMasterDecibel.setLabel(format("%.1f dB", worker.actualVolumeDb));
-		if (volumeSliderInDb)
-			autoSetVolume = worker.volumeInterpolator.mapDbTo01(worker.volumeInterpolator.volumeDb);
-		else
-			autoSetVolume = worker.volumeInterpolator.volume;
+		version(useDecibels) {
+			autoSetVolume = worker.volumeInterpolator.volumeDb;
+		}
+		else {
+			if (volumeSliderInDb)
+				autoSetVolume = worker.volumeInterpolator.mapDbTo01(worker.volumeInterpolator.volumeDb);
+			else
+				autoSetVolume = worker.volumeInterpolator.volume;
+		}
 		uiMasterVolume.setValue(autoSetVolume);
 
 		//float volumeDifference = clamp01(worker.volumeInterpolator.volume - worker.mLimiter.limitedVolume);

@@ -1,8 +1,10 @@
 module analyser;
-import util;
 import core.time;
 import std.math;
 import std.algorithm;
+
+import util;
+import lookback;
 
 final class Analyser {
 	VisualPeak visualPeak;
@@ -60,32 +62,19 @@ final class Analyser {
 // short term shift buffer for an accurate visual reading of the level
 final class VisualPeak {
 	private {
-		enum timeSpanMs = 40; // 40 = 25fps; 48 = 20fps; 44 = 22fps
-		enum numSamples = 4;
-		Duration sampleDuration = msecs(timeSpanMs/numSamples);
-		float[numSamples] samples;
-		MonoTime nextSampleTime;
+		Lookback lookback;
+		enum timeSpanMs = 40; // 40 = 25fps;
 		float mCurrentPeak;
 	}
 
 	this() {
-		foreach(ref h; samples) h = 0f;
+		lookback.totalMs = timeSpanMs;
 		mCurrentPeak = 0;
-		nextSampleTime = MonoTime.currTime;
 	}
 
 	void store(MonoTime now, float level) {
-		samples[0] = max(samples[0], level);
-		mCurrentPeak = max(mCurrentPeak, level);
-
-		if (now > nextSampleTime) {
-			samples[3] = samples[2];
-			samples[2] = samples[1];
-			samples[1] = samples[0];
-			samples[0] = 0f;
-			nextSampleTime = now + sampleDuration;
-			mCurrentPeak = samples[].maxElement;
-		}
+		lookback.put(now, level);
+		mCurrentPeak = lookback.maxValue;
 	}
 
 	@property float peak() {

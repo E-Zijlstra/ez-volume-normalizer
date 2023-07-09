@@ -138,8 +138,8 @@ private:
 		foreach(y; 0..mHeight) {
 			idx = y * stride + begin*4;
 			foreach(x; begin .. end) {
-				data[idx] = cast(ubyte) max(rgba.r, data[idx]-30); idx++;
-				data[idx] = cast(ubyte) max(rgba.g, data[idx]-32); idx++;
+				data[idx] = cast(ubyte) max(rgba.r, data[idx]-28); idx++;
+				data[idx] = cast(ubyte) max(rgba.g, data[idx]-28); idx++;
 				data[idx] = cast(ubyte) max(rgba.b, data[idx]-28); idx++;
 				data[idx++] = 0xff; //a
 			}

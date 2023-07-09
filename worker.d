@@ -11,8 +11,11 @@ import limiter, analyser;
 
 import util;
 
-
+// normalizer volume.
 struct VolumeInterpolator {
+	// Meters and controls go this low
+	enum minimumVolumeDbCutOff = -40f;
+
 	float tempoDb = 0.25;
 	float minStepDb = 0.25;
 	bool interpolate = true;
@@ -22,15 +25,19 @@ struct VolumeInterpolator {
 
 	private {
 		StreamListener* mStream;
-		float mTarget = 0f;
-		float mTargetDb = -40f;
+		float mTarget = 1f;
+		float mTargetDb = 0f;
 		float mVolume = 0f;
-		float mVolumeDb = -40f;
-		float mMinVolume = 0;
-		float mMinVolumeDb = -40;
+		float mVolumeDb = 0f;
+		float mMinVolume = -1;
+		float mMinVolumeDb = -1;
 	}
 
+	@property float minVolumeDb() { return mMinVolumeDb; }
+
+	// set hardware capability
 	void setMinVolumeDb(float db) {
+		db = max(db, minimumVolumeDbCutOff);
 		mMinVolumeDb = db;
 		mMinVolume = toLinear(db);
 	}
@@ -154,8 +161,7 @@ class Worker {
 		thread.start();
 		while(stream.state == State.starting) {
 		}
-		// -36 is max attenuation when target is set to 0.01. Clip it so we can use the full range of the volume slider.
-		volumeInterpolator.setMinVolumeDb(max(-40f, stream.minDb));
+		volumeInterpolator.setMinVolumeDb(stream.minDb);
 
 	}
 
@@ -211,6 +217,12 @@ class Worker {
 	void setOutputTarget(double v) {
 		outputTarget = v;
 		if (outputTarget < 0.01) outputTarget = 0.01;
+		normalizeLoudness();
+	}
+
+	void setOutputTargetDb(double v) {
+		outputTarget = toLinear(v);
+		if (outputTarget < 0.001) outputTarget = 0.001;
 		normalizeLoudness();
 	}
 
