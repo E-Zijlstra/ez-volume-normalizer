@@ -7,18 +7,33 @@ import util;
 import lookback;
 
 final class Analyser {
-	VisualPeak visualPeak;
+
+	// visual peak captures the peak level of the last 40ms for display purposes
+	private {
+		Lookback lookback;
+		enum lookbackMs = 60; // 40 = 25fps;
+		float mCurrentPeak = 0;
+		float mCurrentPeakDb = -100;
+
+		void storeVisualPeak(MonoTime now, float level) {
+			lookback.put(now, level);
+			mCurrentPeak = lookback.maxValue;
+			mCurrentPeakDb = toDb(mCurrentPeak);
+		}
+	}
+
 	LevelHistory levelHistory;
 	LevelFilter levelFilter;
 	LoudnessComputer loudnessComputer;
 	uint updateTicks;
 
-	Duration sampleDuration;
 	enum samplesPerSecond = 5; // 1000/5 = 200ms TODO make this configurable
+	Duration sampleDuration;
 
 	this(int numSamples, int sampleDurationMs) {
+		lookback.totalMs = lookbackMs;
+
 		sampleDuration = msecs(sampleDurationMs);
-		visualPeak = new VisualPeak();
 		levelHistory = new LevelHistory(numSamples, sampleDuration);
 		levelFilter = new LevelFilter(levelHistory);
 		loudnessComputer = new LoudnessComputer(levelHistory, levelFilter);
@@ -26,7 +41,7 @@ final class Analyser {
 
 	bool processLevel(float level) {
 		auto now = MonoTime.currTime;
-		visualPeak.store(now, level);
+		storeVisualPeak(now, level);
 		bool historyChanged = levelHistory.add(now, level);
 		if (historyChanged) {
 			levelFilter.classifySamples();
@@ -36,18 +51,24 @@ final class Analyser {
 		return historyChanged;
 	}
 
+
 	@property float visualLevel() {
-		return visualPeak.peak();
+		return mCurrentPeak;
+	}
+
+	@property float visualLevelDb() {
+		return mCurrentPeakDb;
 	}
 
 	@property float loudness() {
 		return loudnessComputer.loudness;
 	}
 
-	@property float level() {
-		return levelHistory.accumulator;
+	// this is a bit dubious, the timespan is not really defined
+	 @property float level() {
+		return mCurrentPeak;
+//		return levelHistory.accumulator;
 	}
-
 
 	void setAverageLength(int seconds) {
 		levelFilter.averageLength = seconds*samplesPerSecond;
@@ -58,29 +79,6 @@ final class Analyser {
 	}
 }
 
-
-// short term shift buffer for an accurate visual reading of the level
-final class VisualPeak {
-	private {
-		Lookback lookback;
-		enum timeSpanMs = 40; // 40 = 25fps;
-		float mCurrentPeak;
-	}
-
-	this() {
-		lookback.totalMs = timeSpanMs;
-		mCurrentPeak = 0;
-	}
-
-	void store(MonoTime now, float level) {
-		lookback.put(now, level);
-		mCurrentPeak = lookback.maxValue;
-	}
-
-	@property float peak() {
-		return mCurrentPeak;
-	}
-}
 
 class LevelHistory {
 	float[] history;

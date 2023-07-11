@@ -506,7 +506,7 @@
    <File path="doc\gtk-build-from-git-bash.sh" />
   </Folder>
   <File path="analyser.d" />
-  <File path="levelhistorymeter.d" />
+  <File path="analysergraph.d" />
   <File path="LICENSE.md" />
   <File path="limiter.d" />
   <File path="lookback.d" />

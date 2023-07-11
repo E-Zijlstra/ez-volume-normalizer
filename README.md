@@ -17,6 +17,9 @@ This normalizer is experimental and may blow up your speakers or ears.
 - Run the executable that you find under releases, or compile the source code yourself. (see below)
 
 # Changelog
+v0.6
+ - Everything in decibels
+
 v0.5
  - Volume slider can be switched to log/decibels scale (right click on slider)
  - Added controls for delay and slowness. Previously these parameters were fixed to 30 and 30.
@@ -26,7 +29,6 @@ v0.5
  - Added limiter lookback parameter
 
  See manual for more details on the new controls.
-
 
 v0.4
  - Device selection

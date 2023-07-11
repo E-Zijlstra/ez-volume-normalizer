@@ -30,11 +30,10 @@ import gtk.MenuItem;
 import util;
 import worker;
 import vumeter;
-import levelhistorymeter;
+import analysergraph;
 import streamlistener;
 
 version=useDecibels;
-import core.runtime;
 import core.sys.windows.windows;
 import std.string;
 
@@ -66,8 +65,8 @@ class UI {
 	Scale uiTargetLevel;
 
 	CheckButton uiEnableNormalizer;
-	Image levelHistoryMeterImg;
-	LevelHistoryMeter levelHistoryMeter;
+	Image analyserGraphImg;
+	AnalyserGraph analyserGraph;
 	Image uiOutputVuImg;
 	VuMeter uiOutputVu;
 	SpinButton uiAvgLength;
@@ -168,8 +167,6 @@ class UI {
 
 			frame.add(uiSignalVuImg = new Image());
 			uiSignalVu = new VuMeter(vleftWidth - 38, vuMeterHeight );
-			uiSignalVu.paint(0, worker.limitOutputStart, worker.limitOutputEnd);
-			uiSignalVuImg.setFromPixbuf(uiSignalVu.pixbuf);
 		}
 
 		{   // target
@@ -186,10 +183,8 @@ class UI {
 			Box frame = addFrame(vleft, "Normalizer");
 			frame.setSpacing(5);
 
-			frame.add(levelHistoryMeterImg = new Image());
-			levelHistoryMeter = new LevelHistoryMeter(vleftWidth - 38, 60, worker.analyser);
-			levelHistoryMeter.paint();
-			levelHistoryMeterImg.setFromPixbuf(levelHistoryMeter.pixbuf);
+			frame.add(analyserGraphImg = new Image());
+			analyserGraph = new AnalyserGraph(vleftWidth - 38, 60, worker.analyser);
 
 			Box hbox = new Box(GtkOrientation.HORIZONTAL, 6);
 			frame.add(hbox);
@@ -206,8 +201,6 @@ class UI {
 
 			frame.add(uiOutputVuImg = new Image());
 			uiOutputVu = new VuMeter(vleftWidth - 38, vuMeterHeight );
-			uiOutputVuImg.setFromPixbuf(uiOutputVu.pixbuf);
-			uiOutputVu.paint(0, worker.limitOutputStart, worker.limitOutputEndPreLimiter);
 		}
 
 
@@ -217,8 +210,6 @@ class UI {
 
 			frame.add(uiOutputLimitedVuImg = new Image());
 			uiOutputLimitedVu = new VuMeter(vleftWidth - 38, vuMeterHeight);
-			uiOutputLimitedVuImg.setFromPixbuf(uiOutputLimitedVu.pixbuf);
-			uiOutputLimitedVu.paint(0, worker.limitOutputStart, worker.limitOutputEnd);
 
 			frame.add(uiLimiter = levelMeter());
 			uiLimiter.addStyle(limiterCss);
@@ -228,8 +219,8 @@ class UI {
 			frame.add(hbox);
 			hbox.setBorderWidth(10); hbox.setSpacing(5);
 			uiEnableLimiter = wrapTopLabel(hbox, "active", new CheckButton(null, (CheckButton b){ worker.mLimiter.enabled = b.getActive();} ));
-			uiLimiterStart = wrapTopLabel(hbox, "start", new SpinButton(0.1, 6, 0.01));
-			uiLimiterWidth = wrapTopLabel(hbox, "width", new SpinButton(0.01, 4, 0.01));
+			uiLimiterStart = wrapTopLabel(hbox, "start offset (dB)", new SpinButton(-24, 24, 0.1));
+			uiLimiterWidth = wrapTopLabel(hbox, "width (dB)", new SpinButton(0.1, 24, 0.1));
 			uiLimiterRelease = wrapTopLabel(hbox, "release (dB/s)", new SpinButton(0.5, 18, 0.5));
 			uiLimiterLookback = wrapTopLabel(hbox, "look back (ms)", new SpinButton(20, 10000, 10));
 			uiLimiterStart.addOnValueChanged( (SpinButton e) { setLimiterParameters(); } );
@@ -259,14 +250,14 @@ class UI {
 			uiMasterVolume.setInverted(true);
 			uiMasterVolume.setDrawValue(true);
 			uiMasterVolume.addOnValueChanged(&volumeSliderChanged);
-			uiMasterVolume.addOnButtonPress( (GdkEventButton* b, Widget) {
-				if(b.button == 3) {
-					volumePopup.showAll();
-					volumePopup.popupAtPointer(null);
-					return true;
-				}
-				return false;
-			} );
+			//uiMasterVolume.addOnButtonPress( (GdkEventButton* b, Widget) {
+			//    if(b.button == 3) {
+			//        volumePopup.showAll();
+			//        volumePopup.popupAtPointer(null);
+			//        return true;
+			//    }
+			//    return false;
+			//} );
 		}
 
 		uiLowVolumeBoost = new ComboBoxText(false);
@@ -288,17 +279,18 @@ class UI {
 		win.showAll();
 
 		// default values
-		uiLimiterStart.setValue(1.15);
-		uiLimiterWidth.setValue(0.3);
+		uiLimiterStart.setValue(1.2);
+		uiLimiterWidth.setValue(2.0);
 		uiLimiterRelease.setValue(6);
 		uiLimiterLookback.setValue(1000);
-		uiTargetLevel.setValue(-14);
+		uiTargetLevel.setValue(-20);
 		uiEnableLimiter.setActive(true);
 		uiEnableNormalizer.setActive(true);
 		uiLowVolumeBoost.setActive(3);
-		uiAvgLength.setValue(20);
+		uiAvgLength.setValue(15);
 		uiNumLoudnessBars.setValue(15);
 
+		displayProcessing();
 	}
 
 	void onDestroy(Widget w) {
@@ -318,25 +310,32 @@ class UI {
 
 	void setLimiterParameters() {
 		try {
-			worker.limiterStart = uiLimiterStart.getValue();
-			worker.limiterWidth = uiLimiterWidth.getValue();
 			worker.syncLimiter( (l) {
 				l.releasePerSecond = uiLimiterRelease.getValue();
 				l.holdTimeMs = cast(uint) uiLimiterLookback.getValue();
+				l.limitT = limitT();
+				l.limitW = limitW();
 			});
 			showLimiterMarks();
 		} catch(Exception e) {}
 	}
 
+	float clampVolume(float v) {
+		version(useDecibels) {
+			return clampAB(v, minDb, 0);
+		}else {
+			return clamp01(v);
+		}
+	}
+
 	void showLimiterMarks() {
 		uiTargetLevel.clearMarks();
-		uiTargetLevel.addMark(min(1, worker.limitOutputStart), GtkPositionType.BOTTOM, "C");
-		uiTargetLevel.addMark(min(1, worker.limitOutputEnd), GtkPositionType.BOTTOM, "L");
+		uiTargetLevel.addMark(clampVolume(outputLimitStart), GtkPositionType.BOTTOM, "C");
+		uiTargetLevel.addMark(clampVolume(outputLimitEnd), GtkPositionType.BOTTOM, "L");
 	}
 
 	void setOutputTarget(float value) {
 		version(useDecibels) {
-			info("target changed", value);
 			worker.setOutputTargetDb(value);
 		}
 		else {
@@ -351,9 +350,9 @@ class UI {
 	bool onEnable(bool state, Switch sw) {
 		if (state && worker.state == Worker.State.stopped) {
 			// switch on
-			//worker = new Worker(); problem is that LevelHistoryMeter etc still has references to old worker.
+			//worker = new Worker(); problem is that analyserGraph etc still has references to old worker.
 			version(useDecibels) {
-				worker.setOutputTargetDb(uiTargetLevel.getValue());
+				worker.setOutputTargetDb(outputTarget);
 			}else {
 				worker.setOutputTarget(uiTargetLevel.getValue());
 			}
@@ -418,15 +417,19 @@ class UI {
 
 	void displayProcessing() {
 		import std.math.exponential;
-		real v = worker.signal;
 
-		uiSignalVu.paint(v, worker.limitSignalStart, worker.limitSignalEnd);
+		version(useDecibels) {
+			uiSignalVu.minDb = minDb;
+			uiSignalVu.paintDb(worker.signalDb, inputLimitStart, inputLimitEnd);
+		}
+		else
+			uiSignalVu.paint(worker.signal, inputLimitStart, inputLimitEnd);
 		uiSignalVuImg.setFromPixbuf(uiSignalVu.pixbuf);
 
 		if (worker.analyser.updateTicks != analyserUpdateTicks) {
 			analyserUpdateTicks = worker.analyser.updateTicks;
-			levelHistoryMeter.paint();
-			levelHistoryMeterImg.setFromPixbuf(levelHistoryMeter.pixbuf);
+			analyserGraph.paint();
+			analyserGraphImg.setFromPixbuf(analyserGraph.pixbuf);
 		}
 
 		uiMasterDecibel.setLabel(format("%.1f dB", worker.actualVolumeDb));
@@ -446,12 +449,21 @@ class UI {
 		uiLimiter.setValue(normalizedAttenuation);
 
 
-		uiOutputVu.paint(worker.normalizedSignal, worker.limitOutputStart, worker.limitOutputEndPreLimiter);
+		version(useDecibels) {
+			uiOutputVu.minDb = minDb;
+			uiOutputVu.paintDb(worker.normalizedSignalDb, outputLimitStart, outputLimitEndPreLimiter);
+		}
+		else
+			uiOutputVu.paint(worker.normalizedSignal, outputLimitStart, outputLimitEndPreLimiter);
 		uiOutputVuImg.setFromPixbuf(uiOutputVu.pixbuf);
 
-		uiOutputLimitedVu.paint(worker.limitedSignal, worker.limitOutputStart, worker.limitOutputEnd);
+		version(useDecibels) {
+			uiOutputLimitedVu.minDb = minDb;
+			uiOutputLimitedVu.paintDb(worker.limitedSignalDb, outputLimitStart, outputLimitEnd);
+		}
+		else
+			uiOutputLimitedVu.paint(worker.limitedSignal, outputLimitStart, outputLimitEnd);
 		uiOutputLimitedVuImg.setFromPixbuf(uiOutputLimitedVu.pixbuf);
-
 	}
 
 
@@ -468,7 +480,7 @@ class UI {
 			return 1;
 		} catch (Throwable t) {
 			try {
-				info(" ******* idle exception *******");
+				info("******* idle exception *******");
 				info(t.message);
 				info(t.file);
 				info(t.info);
@@ -476,6 +488,90 @@ class UI {
 			return 1;
 		}
 	}
+
+
+	@property float outputTarget() {
+		version(useDecibels)
+			return uiTargetLevel.getValue();
+		else
+			return worker.outputTarget;
+	}
+
+	@property float limiterOffset() {
+		version(useDecibels)
+			return uiLimiterStart.getValue();
+		else
+			return toLinear(uiLimiterStart.getValue());
+	}
+
+	@property float limiterWidth() {
+		version(useDecibels)
+			return uiLimiterWidth.getValue();
+		else
+			return toLinear(uiLimiterWidth.getValue())-1.0;
+	}
+
+	@property float limitT() {
+		version(useDecibels) {
+			return toLinear(outputTarget + limiterOffset) + limitW;
+		}
+		else {
+			return outputTarget * (limiterOffset + limiterWidth);
+		}
+	}
+
+	@property float limitW() {
+		version(useDecibels) {
+			float start = outputTarget + limiterOffset;
+			float end = start + limiterWidth;
+			return (toLinear(end) - toLinear(start));
+		} else {
+			return outputTarget * limiterWidth;
+		}
+	}
+
+	// limiter range on meters 
+
+	@property float inputLimitStart() {
+		version(useDecibels) {
+			return outputLimitStart - worker.volumeInterpolator.volumeDb;
+		}
+		else {
+			return outputLimitStart/(worker.volumeInterpolator.volume+0.0001);
+		}
+	}
+
+	@property float inputLimitEnd() {
+		version(useDecibels) {
+			return outputLimitEndPreLimiter - worker.volumeInterpolator.volumeDb;
+		}
+		else {
+			return outputLimitEndPreLimiter/(worker.volumeInterpolator.volume+0.0001);
+		}
+	}
+
+	@property float outputLimitStart() {
+		version(useDecibels)
+			return outputTarget + limiterOffset;
+		else
+			return limitT - limitW;
+	}
+
+	@property float outputLimitEnd() { //!
+		version(useDecibels)
+			return outputTarget + limiterOffset + limiterWidth;
+		else
+			return limitT;
+	}
+
+	@property float outputLimitEndPreLimiter() { //!
+		version(useDecibels)
+			return outputTarget + limiterOffset + limiterWidth + limiterWidth;
+		else
+			return limitT + limitW;
+	}
+
+
 }
 
 private LevelBar levelMeter(int thickness=5, bool cols=false, bool horizontal = true) {

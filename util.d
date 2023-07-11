@@ -10,6 +10,11 @@ T clamp01(T)(T t) {
 	return t;
  }
 
+T clampAB(T)(T t, T a, T b) {
+	if (t < a) return a;
+	if (t > b) return b;
+	return t;
+}
 
 struct RGBA {
 	ubyte r;

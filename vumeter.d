@@ -15,14 +15,38 @@ class VuMeter : VuMeterBase {
 	bool enableRaster = true; // enables the raster like spacing between LEDs
 	bool enableFade = true;   // enables the fading to the background color, making it easier to see the level
 	bool enablePeak = true;
+	float minDb = -40;
 
 	this(int width, int height) {
 		super(width, height);
 	}
 
 	void paint(float level, float orangeLevel, float redLevel) {
+		level = clamp01(level);
+		orangeLevel = clamp01(orangeLevel);
+		redLevel = clamp01(redLevel);
 		paintLevel(level, orangeLevel, redLevel);
 		paintPeak(level, orangeLevel, redLevel);
+	}
+
+	void paintDb(float level, float orangeLevel, float redLevel) {
+		level = mapDbTo01(level);
+		orangeLevel = mapDbTo01(orangeLevel);
+		redLevel = mapDbTo01(redLevel);
+		paint(level, orangeLevel, redLevel);
+	}
+
+private:
+	// returns a value between 0 and 1, where 0 equals minDb, and 1 equals maxDb
+	float mapDbTo01(float db) {
+		enum maxDb = 0;
+		return (db - minDb) / (maxDb - minDb);
+	}
+
+	// inverse of mapDbTo01
+	float map01ToDb(float s) {
+		enum maxDb = 0;
+		return s * (maxDb - minDb) + minDb;
 	}
 
 
@@ -39,9 +63,9 @@ private:
 	enum RGBA blank =  RGBA(0,0,0);
 
 	// background colors
-	enum RGBA bgGreen =   RGBA(0,   0xe0, 0    ) * 0.25;
-	enum RGBA bgOrange =  RGBA(255, 0x80, 0x40 ) * 0.30;
-	enum RGBA bgRed =     RGBA(255, 0,    0    ) * 0.25;
+	enum RGBA bgGreen =   RGBA(0,   0xe0, 0    ) * 0.22;
+	enum RGBA bgOrange =  RGBA(255, 0x80, 0x40 ) * 0.38;
+	enum RGBA bgRed =     RGBA(255, 0,    0    ) * 0.35;
 
 	// color for the space between the leds
 	enum RGBA spGreen =   RGBA(0,   0xe0, 0    ) * 0.83;
@@ -49,14 +73,10 @@ private:
 	enum RGBA spRed =     RGBA(255, 0,    0    ) * 0.83;
 
 	void paintLevel(float vol, float orangeLevel, float redLevel) {
-		vol = min(1,vol);
-		orangeLevel = min(1,orangeLevel);
-		redLevel = min(1,redLevel);
-
 		// pixel to start the color on
-		int xVol = levelToPixel(vol); //cast(int) ceil(vol * mWidth);
-		int xOrange = levelToPixel(orangeLevel); //cast(int) floor(orangeLevel * mWidth);
-		int xRed = levelToPixel(redLevel); //cast(int) floor(redLevel * mWidth);
+		int xVol = levelToPixel(vol);
+		int xOrange = levelToPixel(orangeLevel);
+		int xRed = levelToPixel(redLevel);
 		int xEnd = mWidth;
 
 		// clear/fade to background color
@@ -104,7 +124,7 @@ private:
 			RGBA col = green;
 			if (peak > orangeLevel)  { col = orange; }
 			if (peak > redLevel) { col = red; }
-			paintVerticalLine(cast(int) max(1,ceil(peak * mWidth)), col);
+			paintVerticalLine(levelToPixel(peak), col);
 		}
 	}
 
@@ -113,7 +133,7 @@ private:
 		uint rasterColor = rasterColor_.toUint;
 		int stride = mPixbuf.getRowstride() /4;
 		char[] cdata = mPixbuf.getPixelsWithLength();
-		uint[] data = cast(uint[]) cdata;  // assuming rgba format ... (!)
+		uint[] data = cast(uint[]) cdata;
 
 		int idx = 0;
 		foreach(y; 0..mHeight) {

@@ -1,6 +1,5 @@
 module main;
 
-import core.sys.windows.windows;
 import std.stdio;
 import VolumeNormalizer;
 
@@ -17,6 +16,10 @@ debug {
 	}
 }
 else {
+	import std.string;
+	import core.runtime;
+	import core.sys.windows.windows;
+
 	// https://wiki.dlang.org/D_for_Win32
 	// Without this, Win32 will open a text console window whenever the application is run.
 	extern (Windows)int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,

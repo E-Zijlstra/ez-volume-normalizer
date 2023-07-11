@@ -24,13 +24,13 @@ struct VolumeInterpolator {
 	float tempo = 0.1;
 
 	private {
-		StreamListener* mStream;
+		//StreamListener* mStream;
 		float mTarget = 1f;
 		float mTargetDb = 0f;
 		float mVolume = 0f;
 		float mVolumeDb = 0f;
-		float mMinVolume = -1;
-		float mMinVolumeDb = -1;
+		float mMinVolume = 0;
+		float mMinVolumeDb = -40;
 	}
 
 	@property float minVolumeDb() { return mMinVolumeDb; }
@@ -121,11 +121,6 @@ class Worker {
 
 		float actualVolumeDb;
 		bool mOverrideVolume = false;
-
-		// -- limiter --
-		// range where the limiter starts to work, 1.25 means 125% of the volumeTarget
-		float limiterStart = 1.25f;
-		float limiterWidth = 0.2f;
 	}
 
 	float lowVolumeBoost = 1;
@@ -212,11 +207,23 @@ class Worker {
 		return signal * mLimiter.limitedVolume;
 	}
 
+	@property float signalDb() {
+		return analyser.visualLevelDb();
+	}
+
+	@property float normalizedSignalDb() {
+		return signalDb + volumeInterpolator.volumeDb;
+	}
+
+	@property float limitedSignalDb() {
+		return signalDb + mLimiter.limitedVolumeDb;
+	}
+
 	float getOutputTarget() { return this.outputTarget; }
 
 	void setOutputTarget(double v) {
 		outputTarget = v;
-		if (outputTarget < 0.01) outputTarget = 0.01;
+		if (outputTarget < 0.001) outputTarget = 0.001;
 		normalizeLoudness();
 	}
 
@@ -230,35 +237,6 @@ class Worker {
 	// volume = outTarget / in
 
 	// compute T and W parameters based on outputTarget, just for convience
-	// https://dsp.stackexchange.com/questions/73619/how-to-derive-equation-for-second-order-interpolation-of-soft-knee-cutoff-in-a-c
-	@property float limitT() {
-		return outputTarget * (limiterStart + limiterWidth);
-	}
-
-	@property float limitW() {
-		return outputTarget * limiterWidth;
-	}
-
-	@property float limitOutputStart() {
-		return limitT - limitW;
-	}
-
-	@property float limitOutputEnd() {
-		return limitT;
-	}
-
-	@property float limitOutputEndPreLimiter() {
-		return limitT + limitW;
-	}
-
-	@property float limitSignalStart() {
-		return limitOutputStart/(volumeInterpolator.volume+0.0001);
-	}
-
-	@property float limitSignalEnd() {
-		return limitOutputEndPreLimiter/(volumeInterpolator.volume+0.0001);
-	}
-
 
 private:
 	Thread thread;
@@ -289,10 +267,8 @@ private:
 		synchronized(mLimiter) {
 			Limiter limiter = cast(Limiter)(mLimiter);
 			limiter.setCurrentVolume(volumeInterpolator.volume, volumeInterpolator.volumeDb);
-			limiter.limitT = limitT();
-			limiter.limitW = limitW();
 			if (ticked) limiter.release();
-			limiter.process(now, analyser.level);
+			limiter.process(now, pk);
 		}
 		
 		setEndpointVolume();

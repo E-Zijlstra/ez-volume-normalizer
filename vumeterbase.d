@@ -25,7 +25,7 @@ final:
 		uint rgba = rgba_.toUint;
 		int stride = mPixbuf.getRowstride() / 4;
 		char[] cdata = mPixbuf.getPixelsWithLength();
-		uint[] data = cast(uint[]) cdata;  // assuming rgba format ... (!)
+		uint[] data = cast(uint[]) cdata;
 
 		int idx = 0;
 		foreach(y; 0..mHeight) {
@@ -40,7 +40,7 @@ final:
 		uint rgba = rgba_.toUint;
    		int stride = mPixbuf.getRowstride() / 4;
 		char[] cdata = mPixbuf.getPixelsWithLength();
-		uint[] data = cast(uint[]) cdata;  // assuming rgba format ... (!)
+		uint[] data = cast(uint[]) cdata;
 
 		int idx = x;
 		foreach(y; 0..mHeight) {
@@ -56,7 +56,7 @@ final:
 		uint accentRgba = accentColor.toUint;
 	   	int stride = mPixbuf.getRowstride() / 4;
 		char[] cdata = mPixbuf.getPixelsWithLength();
-		uint[] data = cast(uint[]) cdata;  // assuming rgba format ... (!)
+		uint[] data = cast(uint[]) cdata;
 
 		int idx = (mHeight - height) * stride + x;
 
@@ -74,7 +74,7 @@ final:
 		uint rgba = color.toUint;
 		int idx = y * mPixbuf.getRowstride() / 4 + x;
 		char[] cdata = mPixbuf.getPixelsWithLength();
-		uint[] data = cast(uint[]) cdata;  // assuming rgba format ... (!)
+		uint[] data = cast(uint[]) cdata;
 		data[idx] = rgba;
 	}
 

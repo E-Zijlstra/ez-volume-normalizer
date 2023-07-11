@@ -1,4 +1,4 @@
-module levelhistorymeter;
+module analysergraph;
 
 import vumeterbase;
 import analyser;
@@ -7,7 +7,7 @@ import util;
 
 //version=paintAccents;
 
-class LevelHistoryMeter : VuMeterBase {
+class AnalyserGraph : VuMeterBase {
 	private {
 	    Analyser analyser;
 

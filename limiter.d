@@ -10,6 +10,7 @@ import util;
 import core.time;
 import lookback;
 
+// https://dsp.stackexchange.com/questions/73619/how-to-derive-equation-for-second-order-interpolation-of-soft-knee-cutoff-in-a-c
 final class Limiter {
 	// settings
 	int ticksPerSecond;
