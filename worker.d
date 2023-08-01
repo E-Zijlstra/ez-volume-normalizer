@@ -11,17 +11,14 @@ import limiter, analyser;
 
 import util;
 
-// normalizer volume.
+
 struct VolumeInterpolator {
 	// Meters and controls go this low
 	enum minimumVolumeDbCutOff = -40f;
 
-	float tempoDb = 0.25;
-	float minStepDb = 0.25;
+	float tempoDb = 2;
+	float minStepDb = 0.1;
 	bool interpolate = true;
-
-	//float curve = 1.0;
-	float tempo = 0.1;
 
 	private {
 		//StreamListener* mStream;
@@ -47,6 +44,11 @@ struct VolumeInterpolator {
 		mTargetDb = toDb(v);
 		mTarget = max(mTarget, mMinVolume);
 		mTargetDb = max(mTargetDb, mMinVolumeDb);
+
+		if (!interpolate) {
+			mVolume = mTarget;
+			mVolumeDb = mTargetDb;
+		}
 	}
 
 	void setTargetDb(float v) {
@@ -54,18 +56,20 @@ struct VolumeInterpolator {
 		mTargetDb = v;
 		mTarget = max(mTarget, mMinVolume);
 		mTargetDb = max(mTargetDb, mMinVolumeDb);
+
+		if (!interpolate) {
+			mVolume = mTarget;
+			mVolumeDb = mTargetDb;
+		}
 	}
 
 	@property float volume() { return mVolume; }
 	@property float volumeDb() { return mVolumeDb; }
 
-	void tick() {
+	void tick(float dt) {
 		if (interpolate) {
-			interpolateDb();
-		}
-		else {
-			mVolume = mTarget;
-			mVolumeDb = mTargetDb;
+			interpolateDb(dt);
+			mVolume = toLinear(mVolumeDb);
 		}
 	}
 
@@ -83,27 +87,16 @@ struct VolumeInterpolator {
 
 	
 private:
-	void interpolateLinear() {
-		float v = mVolume + (mTarget - mVolume) * tempo;
-		mVolume = clamp01(v);
-		mVolumeDb = toDb(mVolume);
-	}
 
-	void interpolateDb() {
+	void interpolateDb(float dt) {
 		float diff = mTargetDb - mVolumeDb;
-		float aDiff = abs(diff);
 
-		if (aDiff <= minStepDb) {
+		if (abs(diff) <= minStepDb) {
 			mVolumeDb = mTargetDb;
 		}
 		else {
-			float sign = sgn(diff);
-			float step = aDiff * tempoDb;
-			step = max(step, minStepDb);
-			mVolumeDb += sign * step;
+			mVolumeDb += diff * tempoDb * dt;
 		}
-
-		mVolume = toLinear(mVolumeDb);
 	}
 
 }
@@ -170,6 +163,9 @@ class Worker {
 	void setOverride(bool yes) {
 		volumeInterpolator.interpolate = !yes;
 		mOverrideVolume = yes;
+		if (!yes) {
+			setVolumeFromAnalyser();
+		}
 	}
 
 	void setVolume(float v) {
@@ -177,11 +173,11 @@ class Worker {
 			bool wasInterpolated = interpolate;
 			interpolate = false;
 			setTarget(v);
-			tick();
 			interpolate = wasInterpolated;
 		}
 
 		setEndpointVolume();
+		if (!mOverrideVolume) setVolumeFromAnalyser();
 	}
 
 	void setVolumeDb(float db) {
@@ -189,10 +185,10 @@ class Worker {
 			bool wasInterpolated = interpolate;
 			interpolate = false;
 			setTargetDb(db);
-			tick();
 			interpolate = wasInterpolated;
 		}
 		setEndpointVolume();
+		if (!mOverrideVolume) setVolumeFromAnalyser();
 	}
 
 	@property float signal() {
@@ -224,13 +220,13 @@ class Worker {
 	void setOutputTarget(double v) {
 		outputTarget = v;
 		if (outputTarget < 0.001) outputTarget = 0.001;
-		normalizeLoudness();
+		setVolumeFromAnalyser();
 	}
 
 	void setOutputTargetDb(double v) {
 		outputTarget = toLinear(v);
 		if (outputTarget < 0.001) outputTarget = 0.001;
-		normalizeLoudness();
+		setVolumeFromAnalyser();
 	}
 
 	// --- limits / conversions
@@ -255,13 +251,11 @@ private:
 		float pk = floatDataToPeak(data, numFramesAvailable);
 
 		bool loudnessChanged = analyser.processLevel(pk);
-		if (loudnessChanged) {
-			normalizeLoudness();
-		}
 
 		bool ticked = tick();
 		if (ticked && !mOverrideVolume) {
-			volumeInterpolator.tick();
+			setVolumeFromAnalyser();
+			volumeInterpolator.tick(1f/ticksPerSecond);
 		}
 
 		synchronized(mLimiter) {
@@ -287,7 +281,7 @@ private:
 		return pk;
 	}
 
-	void normalizeLoudness() {
+	void setVolumeFromAnalyser() {
 		float loudness = analyser.loudness;
 		float ratio = loudness > 0.0001 ? outputTarget / loudness : 0.0001; // use low volume when audio is silence
 		ratio = min(1f, ratio);
@@ -305,15 +299,13 @@ private:
 
 
 	private float previousEndpointVolume = 1;
-		
+	
+	// resolution of endpoint is typacally 0.4db
 	void setEndpointVolume() {
 		float db = min(volumeInterpolator.volumeDb, mLimiter.limitedVolumeDb);
-		if (abs(db-previousEndpointVolume) < 0.1) return;
+		db = quantize(db, 0.1f);
+		if (db == previousEndpointVolume) return;
 		previousEndpointVolume = db;
-
-		if (lowVolumeBoost != 1) {
-			db = db / lowVolumeBoost;
-		}
 
 		stream.setVolumeDb(db);
 	}

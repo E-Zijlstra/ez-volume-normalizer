@@ -83,7 +83,6 @@ class UI {
 
 	Label uiMasterDecibel;
 	Scale uiMasterVolume;
-	ComboBoxText uiLowVolumeBoost;
 
 	Menu volumePopup;
 
@@ -117,7 +116,7 @@ class UI {
 	void open() {
 		worker = new Worker();
 		endpoints = worker.stream.getEndpoints();
-		win = new MainWindow("EZ Volume Normalizer 0.6  -  github.com/E-Zijlstra/ez-volume-normalizer");
+		win = new MainWindow("EZ Volume Normalizer 0.6b  -  github.com/E-Zijlstra/ez-volume-normalizer");
 		win.setDefaultSize(630, 300);
 		//win.addGlobalStyle("window {background: rgb(82,74,67);} spinbutton {background: rgb(82,74,67)}");
 
@@ -221,7 +220,7 @@ class UI {
 			uiEnableLimiter = wrapTopLabel(hbox, "active", new CheckButton(null, (CheckButton b){ worker.mLimiter.enabled = b.getActive();} ));
 			uiLimiterStart = wrapTopLabel(hbox, "start offset (dB)", new SpinButton(-24, 24, 0.1));
 			uiLimiterWidth = wrapTopLabel(hbox, "width (dB)", new SpinButton(0.1, 24, 0.1));
-			uiLimiterRelease = wrapTopLabel(hbox, "release (dB/s)", new SpinButton(0.5, 18, 0.5));
+			uiLimiterRelease = wrapTopLabel(hbox, "release (dB/s)", new SpinButton(0.5, 80, 0.5));
 			uiLimiterLookback = wrapTopLabel(hbox, "look back (ms)", new SpinButton(20, 10000, 10));
 			uiLimiterStart.addOnValueChanged( (SpinButton e) { setLimiterParameters(); } );
 			uiLimiterWidth.addOnValueChanged( (SpinButton e) { setLimiterParameters(); } );
@@ -242,7 +241,7 @@ class UI {
 		{
 			Box volCtrl = volPane;
 			version(useDecibels) {
-				volCtrl.add(uiMasterVolume = new Scale(GtkOrientation.VERTICAL, minDb, 0, 1));
+				volCtrl.add(uiMasterVolume = new Scale(GtkOrientation.VERTICAL, minDb, 0, 0.1));
 			} else {
 				volCtrl.add(uiMasterVolume = new Scale(GtkOrientation.VERTICAL, 0, 1, 0.05));
 			}
@@ -260,20 +259,6 @@ class UI {
 			//} );
 		}
 
-		uiLowVolumeBoost = new ComboBoxText(false);
-		uiLowVolumeBoost.appendText("2.5");
-		uiLowVolumeBoost.appendText("2.0");
-		uiLowVolumeBoost.appendText("1.5");
-		uiLowVolumeBoost.appendText("1.0");
-		uiLowVolumeBoost.appendText("0.75");
-		uiLowVolumeBoost.appendText("0.5");
-		uiLowVolumeBoost.appendText("0.4");
-		uiLowVolumeBoost.setTooltipText("Low Volume Boost");
-		uiLowVolumeBoost.addOnChanged( (ComboBoxText c) {
-			worker.lowVolumeBoost = c.getActiveText().to!float;
-		} );
-		volPane.add(uiLowVolumeBoost);
-
 		gdk.Threads.threadsAddTimeout(15, &idle, cast(void*)(this));
 		win.addOnDestroy(&onDestroy);
 		win.showAll();
@@ -286,7 +271,6 @@ class UI {
 		uiTargetLevel.setValue(-20);
 		uiEnableLimiter.setActive(true);
 		uiEnableNormalizer.setActive(true);
-		uiLowVolumeBoost.setActive(3);
 		uiAvgLength.setValue(15);
 		uiNumLoudnessBars.setValue(15);
 
@@ -399,11 +383,11 @@ class UI {
 	float autoSetVolume = 1;
 
 	void volumeSliderChanged(Range r) {
-		float scalar = uiMasterVolume.getValue();
-		if (scalar == autoSetVolume) return;
+		float sliderVolume = uiMasterVolume.getValue();
+		if (sliderVolume == autoSetVolume) return;
 
 		version(useDecibels) {
-			worker.setVolumeDb(scalar);
+			worker.setVolumeDb(sliderVolume);
 		}
 		else {
 			if (volumeSliderInDb)
@@ -432,7 +416,7 @@ class UI {
 			analyserGraphImg.setFromPixbuf(analyserGraph.pixbuf);
 		}
 
-		uiMasterDecibel.setLabel(format("%.1f dB", worker.actualVolumeDb));
+		uiMasterDecibel.setLabel(format("%.2f dB", worker.actualVolumeDb));
 		version(useDecibels) {
 			autoSetVolume = worker.volumeInterpolator.volumeDb;
 		}
@@ -442,6 +426,7 @@ class UI {
 			else
 				autoSetVolume = worker.volumeInterpolator.volume;
 		}
+
 		uiMasterVolume.setValue(autoSetVolume);
 
 		//float volumeDifference = clamp01(worker.volumeInterpolator.volume - worker.mLimiter.limitedVolume);
