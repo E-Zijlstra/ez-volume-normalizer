@@ -32,8 +32,8 @@ import worker;
 import vumeter;
 import analysergraph;
 import streamlistener;
+import settings;
 
-version=useDecibels;
 import core.sys.windows.windows;
 import std.string;
 
@@ -45,30 +45,29 @@ class UI {
 		Main.run();
 	}
 
-	// for controls, meters
-	//enum minDb = -60;
-
 	@property minDb() {
 		return VolumeInterpolator.minimumVolumeDbCutOff;
-		// return worker.volumeInterpolator.minVolumeDb;
 	}
 
 	const int vuMeterHeight = 20;
 	MainWindow win;
 
-	Button button;
 	Switch uiEnable;
 	ComboBoxText uiDevice;
 	Label uiDeviceInfo;
+	ComboBoxText uiSettings;
+	CurveCorrection uiCurveCorrection;
+
+
 	Image   uiSignalVuImg;
 	VuMeter uiSignalVu;
+	Image uiOutputVuImg;
+	VuMeter uiOutputVu;
 	Scale uiTargetLevel;
 
 	CheckButton uiEnableNormalizer;
 	Image analyserGraphImg;
 	AnalyserGraph analyserGraph;
-	Image uiOutputVuImg;
-	VuMeter uiOutputVu;
 	SpinButton uiAvgLength;
 	SpinButton uiNumLoudnessBars;
 
@@ -76,10 +75,9 @@ class UI {
 	SpinButton uiLimiterStart;
 	SpinButton uiLimiterWidth;
 	SpinButton uiLimiterRelease;
-	SpinButton uiLimiterLookback;
-	Image uiOutputLimitedVuImg;
-	VuMeter uiOutputLimitedVu;
-	LevelBar uiLimiter;
+	SpinButton uiLimiterHold;
+	SpinButton uiLimiterAttack;
+	LevelBar uiLimiterAttn;
 
 	Label uiMasterDecibel;
 	Scale uiMasterVolume;
@@ -109,45 +107,34 @@ class UI {
 
 	const limiterCss = "
 		levelbar block.filled {
-		background-color: red;
+			background-color: red;
 		}
 		";
 
 	void open() {
 		worker = new Worker();
 		endpoints = worker.stream.getEndpoints();
-		win = new MainWindow("EZ Volume Normalizer 0.6b  -  github.com/E-Zijlstra/ez-volume-normalizer");
+		win = new MainWindow("EZ Volume Normalizer 0.7  -  github.com/E-Zijlstra/ez-volume-normalizer");
 		win.setDefaultSize(630, 300);
-		//win.addGlobalStyle("window {background: rgb(82,74,67);} spinbutton {background: rgb(82,74,67)}");
 
-		//import gtk.Settings;
-		//Settings set = Settings.getDefault();
-		//set.setData("gtk-theme-name", cast(void*)"Adwaita".ptr);
-
-
-		volumePopup = new Menu();
-		volumePopup.setTitle("Volume");
-		MenuItem uiVolLinear, uiVolLog;
-		volumePopup.append(uiVolLinear = new MenuItem("Linear"));
-		volumePopup.append(uiVolLog = new MenuItem("Log"));
-		uiVolLinear.addOnActivate( (MenuItem) { volumeSliderInDb = false; });
-		uiVolLog.addOnActivate( (MenuItem){ volumeSliderInDb = true; });
-
+		Box mainVsplit = new Box(GtkOrientation.VERTICAL, 0);
+		win.add(mainVsplit);
+		Box topRow = new Box(GtkOrientation.HORIZONTAL, 0);
+		mainVsplit.add(topRow);
 		auto leftrightSplit = new Box(GtkOrientation.HORIZONTAL, 0);
-		win.add(leftrightSplit);
+		mainVsplit.add(leftrightSplit);
 		Box vleft;
-		const vleftWidth = 580;
+		const vleftWidth = 680 ;// 580;
 		leftrightSplit.add(vleft = new Box(GtkOrientation.VERTICAL, 0));
 		vleft.setProperty("width-request", vleftWidth);
 
 		{	// device bar
-			auto frame = new Box(GtkOrientation.HORIZONTAL, 0);
-			vleft.add(frame);
-			frame.setBorderWidth(10);
-			frame.setSpacing(5);
-			frame.add(new Label("Power"));
-			frame.add(uiEnable = new Switch(), );
+			Box frame = topRow.addFrame("device").addHButtonBox();
+			frame.setOrientation(GtkOrientation.HORIZONTAL);
+			frame.add(uiEnable = new Switch());
+			uiEnable.setValign(GtkAlign.CENTER);
 			uiEnable.addOnStateSet(&onEnable);
+			uiEnable.setTooltipText("Power");
 
 			frame.add(uiDevice = new ComboBoxText(false));
 			uiDevice.addOnChanged(&onDeviceChanged);
@@ -156,37 +143,50 @@ class UI {
 			}
 			uiDevice.setActive(cast(int) endpoints.countUntil!(ep => ep.isDefault));
 
-			frame.add(uiDeviceInfo = new Label(""));
+			Box devInfo = new Box(GtkOrientation.VERTICAL, 0);
+			devInfo.setSizeRequest(80,0);
+			frame.add(devInfo);
+			devInfo.setVexpand(false);
+			devInfo.setValign(GtkAlign.CENTER);
+			devInfo.add(uiDeviceInfo = new Label("No power"));
+			devInfo.add(uiMasterDecibel = new Label("0 dB"));
 
-			frame.add(uiMasterDecibel = new Label("0 dB"));
+			uiCurveCorrection = new CurveCorrection(this, frame);
+
 		}
 
-		{	// input
-			Box frame = addFrame(vleft, "input");
+		{
+			Box frame = topRow.addFrame("preset").addHButtonBox();
+			frame.add(uiSettings = new ComboBoxText(false));
+			uiSettings.addOnChanged(&onSettingsChanged);
+			foreach(idx, ref const Settings* s; Settings.all) {
+				uiSettings.appendText(s.name);
+			}
+		}
 
+		{	// vu meters
+			Box frame = addFrame(vleft, "input / output");
 			frame.add(uiSignalVuImg = new Image());
 			uiSignalVu = new VuMeter(vleftWidth - 38, vuMeterHeight );
+			uiSignalVuImg.setMarginBottom(1);
+			frame.add(uiOutputVuImg = new Image());
+			uiOutputVu = new VuMeter(vleftWidth - 38, vuMeterHeight);
 		}
 
 		{   // target
-			Box frame = addFrame(vleft, "normalizer target / limiter range");
-			version(useDecibels) {
-				frame.add(uiTargetLevel = new Scale(GtkOrientation.HORIZONTAL, minDb, 0, 1));
-			}else {
-				frame.add(uiTargetLevel = new Scale(GtkOrientation.HORIZONTAL, 0.01, 1, 0.01));
-			}
+			Box frame = addFrame(vleft, "target");
+			frame.add(uiTargetLevel = new Scale(GtkOrientation.HORIZONTAL, minDb, 0, 1));
 			uiTargetLevel.addOnValueChanged((Range r) { setOutputTarget(uiTargetLevel.getValue()); });
 		}
 
 		{	// normalizer
-			Box frame = addFrame(vleft, "Normalizer");
+			Box frame = addFrame(vleft, "normalizer");
 			frame.setSpacing(5);
 
 			frame.add(analyserGraphImg = new Image());
 			analyserGraph = new AnalyserGraph(vleftWidth - 38, 60, worker.analyser);
 
-			Box hbox = new Box(GtkOrientation.HORIZONTAL, 6);
-			frame.add(hbox);
+			Box hbox = addHButtonBox(frame);
 			hbox.add(uiEnableNormalizer = new CheckButton("active", (CheckButton b){ worker.setOverride(!b.getActive());} ));
 
 			hbox.add(new Label("down delay\n(seconds):"));
@@ -196,10 +196,6 @@ class UI {
 			hbox.add(uiNumLoudnessBars = new SpinButton(1, 30, 1));
 			uiAvgLength.addOnValueChanged((SpinButton e) { worker.analyser.setAverageLength(cast(int)e.getValue()); });
 			uiNumLoudnessBars.addOnValueChanged((SpinButton e) { worker.analyser.setNumLoudnessBars(cast(int)e.getValue()); });
-
-
-			frame.add(uiOutputVuImg = new Image());
-			uiOutputVu = new VuMeter(vleftWidth - 38, vuMeterHeight );
 		}
 
 
@@ -207,25 +203,29 @@ class UI {
 		{   // limiter
 			Box frame = addFrame(vleft, "Limiter");
 
-			frame.add(uiOutputLimitedVuImg = new Image());
-			uiOutputLimitedVu = new VuMeter(vleftWidth - 38, vuMeterHeight);
+			frame.add(uiLimiterAttn = levelMeter(12));
+			uiLimiterAttn.addStyle(limiterCss);
+			uiLimiterAttn.setMarginTop(0);
+			Box hbox0 = new Box(GtkOrientation.HORIZONTAL, 0);
+			frame.add(hbox0);
+			uiEnableLimiter = wrapTopLabel(hbox0, "active", new CheckButton(null, (CheckButton b){ worker.mLimiter.enabled = b.getActive();} ));
 
-			frame.add(uiLimiter = levelMeter());
-			uiLimiter.addStyle(limiterCss);
-			uiLimiter.setMarginTop(0);
+			Box vbox = new Box(GtkOrientation.VERTICAL, 0);
+			hbox0.add(vbox);
+			Box hbox1 = addHButtonBox(vbox);
+			Box hbox2 = addHButtonBox(vbox);
 
-			Box hbox = new Box(GtkOrientation.HORIZONTAL, 0);
-			frame.add(hbox);
-			hbox.setBorderWidth(10); hbox.setSpacing(5);
-			uiEnableLimiter = wrapTopLabel(hbox, "active", new CheckButton(null, (CheckButton b){ worker.mLimiter.enabled = b.getActive();} ));
-			uiLimiterStart = wrapTopLabel(hbox, "start offset (dB)", new SpinButton(-24, 24, 0.1));
-			uiLimiterWidth = wrapTopLabel(hbox, "width (dB)", new SpinButton(0.1, 24, 0.1));
-			uiLimiterRelease = wrapTopLabel(hbox, "release (dB/s)", new SpinButton(0.5, 80, 0.5));
-			uiLimiterLookback = wrapTopLabel(hbox, "look back (ms)", new SpinButton(20, 10000, 10));
+			uiLimiterStart = wrapTopLabel(hbox1, "start offset (dB)", new SpinButton(-24, 24, 0.1));
+			uiLimiterWidth = wrapTopLabel(hbox1, "width (dB)", new SpinButton(0.1, 24, 0.1));
+			uiLimiterAttack = wrapTopLabel(hbox1, "attack (ms)", new SpinButton(0, 1000, 10));
+			uiLimiterHold = wrapTopLabel(hbox1, "lookback (ms)", new SpinButton(0, 10000, 10));
+			uiLimiterRelease = wrapTopLabel(hbox1, "release (dB/s)", new SpinButton(0.5, 80, 0.25));
+
 			uiLimiterStart.addOnValueChanged( (SpinButton e) { setLimiterParameters(); } );
 			uiLimiterWidth.addOnValueChanged( (SpinButton e) { setLimiterParameters(); } );
+			uiLimiterAttack.addOnValueChanged( (SpinButton e) { setLimiterParameters(); } );
 			uiLimiterRelease.addOnValueChanged( (SpinButton e) { setLimiterParameters(); } );
-			uiLimiterLookback.addOnValueChanged( (SpinButton e) { setLimiterParameters(); } );
+			uiLimiterHold.addOnValueChanged( (SpinButton e) { setLimiterParameters(); } );
 			uiLimiterStart.setDigits(2);
 			uiLimiterWidth.setDigits(2);
 			uiLimiterRelease.setDigits(2);
@@ -234,17 +234,13 @@ class UI {
 		// VOLUME CTRL
 		Box volPanel;
 		leftrightSplit.add(volPanel = new Box(GtkOrientation.VERTICAL, 0));
-		Box volPane = addFrame(volPanel, "volume", 10);
+		Box volPane = addFrame(volPanel, "volume");
 		volPane.setBorderWidth(4);
 		volPane.setSpacing(5);
 
 		{
 			Box volCtrl = volPane;
-			version(useDecibels) {
-				volCtrl.add(uiMasterVolume = new Scale(GtkOrientation.VERTICAL, minDb, 0, 0.1));
-			} else {
-				volCtrl.add(uiMasterVolume = new Scale(GtkOrientation.VERTICAL, 0, 1, 0.05));
-			}
+			volCtrl.add(uiMasterVolume = new Scale(GtkOrientation.VERTICAL, minDb, 0, 0.1));
 			uiMasterVolume.setVexpand(true);
 			uiMasterVolume.setInverted(true);
 			uiMasterVolume.setDrawValue(true);
@@ -264,22 +260,32 @@ class UI {
 		win.showAll();
 
 		// default values
-		uiLimiterStart.setValue(1.2);
-		uiLimiterWidth.setValue(2.0);
-		uiLimiterRelease.setValue(6);
-		uiLimiterLookback.setValue(1000);
-		uiTargetLevel.setValue(-20);
+		uiSettings.setActive(0);
+		uiTargetLevel.setValue(-25);
 		uiEnableLimiter.setActive(true);
 		uiEnableNormalizer.setActive(true);
-		uiAvgLength.setValue(15);
-		uiNumLoudnessBars.setValue(15);
 
 		displayProcessing();
 	}
 
+
 	void onDestroy(Widget w) {
 		worker.stop();
 		Main.quit();
+	}
+
+	void onSettingsChanged(ComboBoxText combo) {
+		applySettings(Settings.all[combo.getActive()]);
+	}
+
+	void applySettings(const Settings* s) {
+		uiAvgLength.setValue(s.avgLength);
+		uiNumLoudnessBars.setValue(s.numBars);
+		uiLimiterStart.setValue(s.limiterOffset);
+		uiLimiterWidth.setValue(s.limiterWidth);
+		uiLimiterRelease.setValue(s.limiterDecay);
+		uiLimiterHold.setValue(s.limiterHold);
+		uiLimiterAttack.setValue(s.limiterAttack);
 	}
 
 	void onDeviceChanged(ComboBoxText combo) {
@@ -296,20 +302,17 @@ class UI {
 		try {
 			worker.syncLimiter( (l) {
 				l.releasePerSecond = uiLimiterRelease.getValue();
-				l.holdTimeMs = cast(uint) uiLimiterLookback.getValue();
+				l.holdTimeMs = cast(uint) uiLimiterHold.getValue();
 				l.limitT = limitT();
 				l.limitW = limitW();
+				l.attackMs = uiLimiterAttack.getValue();
 			});
 			showLimiterMarks();
 		} catch(Exception e) {}
 	}
 
 	float clampVolume(float v) {
-		version(useDecibels) {
-			return clampAB(v, minDb, 0);
-		}else {
-			return clamp01(v);
-		}
+		return clampAB(v, minDb, 0);
 	}
 
 	void showLimiterMarks() {
@@ -319,12 +322,7 @@ class UI {
 	}
 
 	void setOutputTarget(float value) {
-		version(useDecibels) {
-			worker.setOutputTargetDb(value);
-		}
-		else {
-			worker.setOutputTarget(value); 
-		}
+		worker.setOutputTargetDb(value);
 		setLimiterParameters();
 		showLimiterMarks();
 	}
@@ -335,11 +333,7 @@ class UI {
 		if (state && worker.state == Worker.State.stopped) {
 			// switch on
 			//worker = new Worker(); problem is that analyserGraph etc still has references to old worker.
-			version(useDecibels) {
-				worker.setOutputTargetDb(outputTarget);
-			}else {
-				worker.setOutputTarget(uiTargetLevel.getValue());
-			}
+			worker.setOutputTargetDb(outputTarget);
 			processingStartedAt = MonoTime.currTime;
 			worker.processedFrames = 0;
 			worker.start();
@@ -386,15 +380,7 @@ class UI {
 		float sliderVolume = uiMasterVolume.getValue();
 		if (sliderVolume == autoSetVolume) return;
 
-		version(useDecibels) {
-			worker.setVolumeDb(sliderVolume);
-		}
-		else {
-			if (volumeSliderInDb)
-				worker.setVolumeDb(worker.volumeInterpolator.map01ToDb(scalar));
-			else
-				worker.setVolume(scalar);
-		}
+		worker.setVolumeDb(sliderVolume);
 	}
 
 	uint analyserUpdateTicks =99;
@@ -402,53 +388,32 @@ class UI {
 	void displayProcessing() {
 		import std.math.exponential;
 
-		version(useDecibels) {
-			uiSignalVu.minDb = minDb;
-			uiSignalVu.paintDb(worker.signalDb, inputLimitStart, inputLimitEnd);
-		}
-		else
-			uiSignalVu.paint(worker.signal, inputLimitStart, inputLimitEnd);
+		uiMasterDecibel.setLabel(format("%06.2f dB", worker.actualVolumeDb));
+
+		// input
+		uiSignalVu.minDb = minDb;
+		uiSignalVu.paintDb(worker.signalDb, inputLimitStart, inputLimitEnd);
 		uiSignalVuImg.setFromPixbuf(uiSignalVu.pixbuf);
 
+		// output
+		uiOutputVu.minDb = minDb;
+		uiOutputVu.paintDb(worker.limitedSignalDb, outputLimitStart, outputLimitEnd);
+		uiOutputVuImg.setFromPixbuf(uiOutputVu.pixbuf);
+
+		// analyser
 		if (worker.analyser.updateTicks != analyserUpdateTicks) {
 			analyserUpdateTicks = worker.analyser.updateTicks;
 			analyserGraph.paint();
 			analyserGraphImg.setFromPixbuf(analyserGraph.pixbuf);
 		}
 
-		uiMasterDecibel.setLabel(format("%.2f dB", worker.actualVolumeDb));
-		version(useDecibels) {
-			autoSetVolume = worker.volumeInterpolator.volumeDb;
-		}
-		else {
-			if (volumeSliderInDb)
-				autoSetVolume = worker.volumeInterpolator.mapDbTo01(worker.volumeInterpolator.volumeDb);
-			else
-				autoSetVolume = worker.volumeInterpolator.volume;
-		}
-
-		uiMasterVolume.setValue(autoSetVolume);
-
-		//float volumeDifference = clamp01(worker.volumeInterpolator.volume - worker.mLimiter.limitedVolume);
+		// limiter
 		float normalizedAttenuation = 1f - worker.volumeInterpolator.mapDbTo01(worker.mLimiter.attenuationDb);
-		uiLimiter.setValue(normalizedAttenuation);
+		uiLimiterAttn.setValue(normalizedAttenuation);
 
-
-		version(useDecibels) {
-			uiOutputVu.minDb = minDb;
-			uiOutputVu.paintDb(worker.normalizedSignalDb, outputLimitStart, outputLimitEndPreLimiter);
-		}
-		else
-			uiOutputVu.paint(worker.normalizedSignal, outputLimitStart, outputLimitEndPreLimiter);
-		uiOutputVuImg.setFromPixbuf(uiOutputVu.pixbuf);
-
-		version(useDecibels) {
-			uiOutputLimitedVu.minDb = minDb;
-			uiOutputLimitedVu.paintDb(worker.limitedSignalDb, outputLimitStart, outputLimitEnd);
-		}
-		else
-			uiOutputLimitedVu.paint(worker.limitedSignal, outputLimitStart, outputLimitEnd);
-		uiOutputLimitedVuImg.setFromPixbuf(uiOutputLimitedVu.pixbuf);
+		// volume slider
+		autoSetVolume = worker.volumeInterpolator.volumeDb;
+		uiMasterVolume.setValue(autoSetVolume);
 	}
 
 
@@ -476,86 +441,48 @@ class UI {
 
 
 	@property float outputTarget() {
-		version(useDecibels)
-			return uiTargetLevel.getValue();
-		else
-			return worker.outputTarget;
+		return uiTargetLevel.getValue();
 	}
 
 	@property float limiterOffset() {
-		version(useDecibels)
-			return uiLimiterStart.getValue();
-		else
-			return toLinear(uiLimiterStart.getValue());
+		return uiLimiterStart.getValue();
 	}
 
 	@property float limiterWidth() {
-		version(useDecibels)
-			return uiLimiterWidth.getValue();
-		else
-			return toLinear(uiLimiterWidth.getValue())-1.0;
+		return uiLimiterWidth.getValue();
 	}
 
 	@property float limitT() {
-		version(useDecibels) {
-			return toLinear(outputTarget + limiterOffset) + limitW;
-		}
-		else {
-			return outputTarget * (limiterOffset + limiterWidth);
-		}
+		return toLinear(outputTarget + limiterOffset) + limitW;
 	}
 
 	@property float limitW() {
-		version(useDecibels) {
-			float start = outputTarget + limiterOffset;
-			float end = start + limiterWidth;
-			return (toLinear(end) - toLinear(start));
-		} else {
-			return outputTarget * limiterWidth;
-		}
+		float start = outputTarget + limiterOffset;
+		float end = start + limiterWidth;
+		return (toLinear(end) - toLinear(start));
 	}
 
 	// limiter range on meters 
 
 	@property float inputLimitStart() {
-		version(useDecibels) {
-			return outputLimitStart - worker.volumeInterpolator.volumeDb;
-		}
-		else {
-			return outputLimitStart/(worker.volumeInterpolator.volume+0.0001);
-		}
+		return outputLimitStart - worker.volumeInterpolator.volumeDb;
 	}
 
 	@property float inputLimitEnd() {
-		version(useDecibels) {
-			return outputLimitEndPreLimiter - worker.volumeInterpolator.volumeDb;
-		}
-		else {
-			return outputLimitEndPreLimiter/(worker.volumeInterpolator.volume+0.0001);
-		}
+		return outputLimitEndPreLimiter - worker.volumeInterpolator.volumeDb;
 	}
 
 	@property float outputLimitStart() {
-		version(useDecibels)
-			return outputTarget + limiterOffset;
-		else
-			return limitT - limitW;
+		return outputTarget + limiterOffset;
 	}
 
-	@property float outputLimitEnd() { //!
-		version(useDecibels)
-			return outputTarget + limiterOffset + limiterWidth;
-		else
-			return limitT;
+	@property float outputLimitEnd() {
+		return outputTarget + limiterOffset + limiterWidth;
 	}
 
-	@property float outputLimitEndPreLimiter() { //!
-		version(useDecibels)
-			return outputTarget + limiterOffset + limiterWidth + limiterWidth;
-		else
-			return limitT + limitW;
+	@property float outputLimitEndPreLimiter() {
+		return outputTarget + limiterOffset + limiterWidth + limiterWidth;
 	}
-
 
 }
 
@@ -602,40 +529,34 @@ private void addGlobalStyle(Window bar, string style) {
 	bar.getStyleContext().addProviderForScreen(screen, css_provider, gtk.c.types.STYLE_PROVIDER_PRIORITY_USER);
 }
 
-private Box addFrame(Box parent, string title, int bottomMargin = 5) {
+private Box addFrame(Box parent, string title) {
 	Frame frame = new Frame(title);
-	//frame.setBorderWidth(5);
-	frame.setMarginTop(5); // outside padding
-	frame.setMarginBottom(bottomMargin);
+	frame.setMarginTop(5);
+	frame.setMarginBottom(5);
 	frame.setMarginLeft(5);
 	frame.setMarginRight(5);
+	frame.setLabelAlign(0.05, 0.5);
 
 	parent.add(frame);
 	auto vbox = new Box(GtkOrientation.VERTICAL, 0);
-	vbox.setMarginTop(5);
+	vbox.setMarginTop(4);
 	vbox.setMarginBottom(5);
 	frame.add(vbox);
-	frame.setLabelAlign(0.02, 0.5);
-	return vbox;
-}
-
-private Box addSmallFrame(Box parent, string title, int bottomMargin =1) {
-	Frame frame = new Frame(title);
-	//frame.setBorderWidth(1);
-	frame.setMarginTop(1); // outside padding
-	frame.setMarginBottom(bottomMargin);
-	frame.setMarginLeft(5);
-	frame.setMarginRight(5);
-	parent.add(frame);
-	auto vbox = new Box(GtkOrientation.VERTICAL, 0);
-	vbox.setMarginTop(4); // inside padding
-	vbox.setMarginBottom(4);
-	frame.add(vbox);
-	frame.setLabelAlign(0.02, 0.5);
 	return vbox;
 }
 
 import gtk.Widget;
+import gtk.Container;
+private Box addHButtonBox(Container parent) {
+	Box hbox = new Box(GtkOrientation.HORIZONTAL, 5);
+	parent.add(hbox);
+	hbox.setMarginLeft(10);
+	hbox.setMarginRight(10);
+	hbox.setMarginTop(1);
+	hbox.setMarginBottom(1);
+	return hbox;
+}
+
 private W wrapTopLabel(P, W: Widget )(P parent, string label, W widget) {
 	auto b = new Box(GtkOrientation.VERTICAL, 0);
 	b.add(new Label(label));
@@ -646,3 +567,36 @@ private W wrapTopLabel(P, W: Widget )(P parent, string label, W widget) {
 	parent.add(b);
 	return widget;
 }
+
+
+class CurveCorrection : ComboBoxText {
+	private {
+		UI vn;
+	}
+
+	this(UI vn_, Container cont) {
+		vn = vn_;
+
+		super(false);
+		appendText("4");
+		appendText("3.5");
+		appendText("3.0");
+		appendText("2.5");
+		appendText("2.0");
+		appendText("1.5");
+		appendText("1.0");
+		appendText("0.75");
+		appendText("0.5");
+		setTooltipText("Curve correction");
+		addOnChanged(&onChanged);
+		cont.add(this);
+		setActive(6);
+	}
+
+	void onChanged(ComboBoxText ct) {
+		vn.worker.lowVolumeBoost = ct.getActiveText().to!float;
+		vn.worker.setVolumeDb(vn.worker.volumeInterpolator.volumeDb-0.1); // trigger
+	}
+
+}
+

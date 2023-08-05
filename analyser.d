@@ -17,6 +17,8 @@ final class Analyser {
 
 		void storeVisualPeak(MonoTime now, float level) {
 			lookback.put(now, level);
+			if (mCurrentPeak == lookback.maxValue) return;
+
 			mCurrentPeak = lookback.maxValue;
 			mCurrentPeakDb = toDb(mCurrentPeak);
 		}
@@ -39,10 +41,19 @@ final class Analyser {
 		loudnessComputer = new LoudnessComputer(levelHistory, levelFilter);
 	}
 
+	//private const(float) minLevel = 0.000316; // -70dB = 0.000316
+	//private const(float) minLevel = 0.000562; // -65dB = 0.000562
+	private const(float) minLevel = 0.001; // -60dB = 0.001
+
 	bool processLevel(float level) {
 		auto now = MonoTime.currTime;
 		storeVisualPeak(now, level);
-		bool historyChanged = levelHistory.add(now, level);
+
+		if (level < minLevel) return false;
+
+		bool historyChanged = false;
+		historyChanged = levelHistory.add(now, level);
+
 		if (historyChanged) {
 			levelFilter.classifySamples();
 			loudnessComputer.computeLoudness();
@@ -76,27 +87,28 @@ final class Analyser {
 
 	void setNumLoudnessBars(int seconds) {
 		loudnessComputer.numLoudnessBars = seconds * samplesPerSecond;
+		levelFilter.numLoudnessBars = seconds * samplesPerSecond;
 	}
 }
 
 
 class LevelHistory {
-	float[] history;
+	float[] samples;
 
 	@property int writeIdx() {
-		return historyIdx;
+		return samplesIdx;
 	}
 
 	@property size_t writtenIdx() {
-		return historyIdx == 0 ? history.length - 1 : historyIdx - 1;
+		return samplesIdx == 0 ? samples.length - 1 : samplesIdx - 1;
 	}
 
 	@property float lastWrittenSample() {
-		return history[writtenIdx];
+		return samples[writtenIdx];
 	}
 
 private:
-	int historyIdx = 0;  // next write position in history
+	int samplesIdx = 0;  // next write position in history
 	Duration sampleDuration;
 	MonoTime nextSampleTime;
 	float accumulator = 0f;
@@ -104,12 +116,11 @@ private:
 
 public:
 	this(int numSamples, Duration sampleDuration_) {
-		history.length = numSamples;
+		samples.length = numSamples;
 		sampleDuration = sampleDuration_;
 		nextSampleTime = MonoTime.currTime;
-		foreach(ref h; history) h = 0f;
+		foreach(ref h; samples) h = 0f;
 	}
-
 
 	bool add(MonoTime now, float level) {
 		accumulator = max(accumulator, level);
@@ -117,12 +128,12 @@ public:
 		// archive the accumulator
 		bool historyChanged = now > nextSampleTime;
 		if (historyChanged) {
-			history[historyIdx] = accumulator;
+			samples[samplesIdx] = accumulator;
 			accumulator = 0f;
 			nextSampleTime = now + sampleDuration;
 
-			historyIdx++;
-			if (historyIdx >= history.length) historyIdx = 0;
+			samplesIdx++;
+			if (samplesIdx >= samples.length) samplesIdx = 0;
 		}
 
 		return historyChanged;
@@ -138,10 +149,12 @@ final class LevelFilter {
 	ubyte[] sampleClassifications;
 	float[] averages;
 	int averageLength;
+	int numLoudnessBars;
 
 	enum LOW = 1;
 	enum INCLUDED = 2;
 	enum HIGH = 3;
+	enum EXPIRED = 4;
 
 	// range of levels used in the weighted average
 	float minIncludeLevel = 0f;
@@ -155,14 +168,14 @@ final class LevelFilter {
 
 	this(LevelHistory history_) {
 		history = history_;
-		sampleClassifications.length = history.history.length;
-		averages.length = history.history.length;
+		sampleClassifications.length = history.samples.length;
+		averages.length = history.samples.length;
 		foreach(ref h; averages) h = 0f;
 	}
 
 	void classifySamples() {
 		import std.range;
-		float[] samples = history.history;
+		float[] samples = history.samples;
 	
 		// compute average
 		maxLevel = samples.maxElement;
@@ -171,16 +184,14 @@ final class LevelFilter {
 		if (startIdx < 0) startIdx += samples.length;
 		real sum = 0;
 		int count = 0;
-		foreach(s; samples.cycle(startIdx).take(averageLength)) {
-			if (s > 0.0005) { // ignore almost total silence -66 dB
-				sum += s;
-				count++;
-			}
+		foreach(s; samples.cycle(startIdx).take(averageLength)) { // TODO: cycle sum
+			sum += s;
+			count++;
 		}
 		if (count == 0) count = 1;
 		avgLevel = sum / count;
 		averages[history.writtenIdx] = avgLevel;
-		float threshold = avgLevel*0.95;
+		float threshold = avgLevel*0.98;
 
 	
 		// ignore the max sample
@@ -207,10 +218,28 @@ final class LevelFilter {
 		if (s > maxIncludeLevel) c = HIGH;
 		sampleClassifications[history.writtenIdx] = c;
 
+		expire();
 	}
 
 	ubyte sampleClassification(int idx) {
 		return sampleClassifications[idx];
+	}
+
+	void expire() {
+		int includedCount = 0;
+		int testedCount = 0;
+		long idx = history.writtenIdx;
+		while(includedCount < numLoudnessBars && testedCount < history.samples.length) {
+			if (sampleClassifications.warp(idx) == INCLUDED) includedCount++;
+			testedCount++;
+			idx--;
+		}
+
+		while(testedCount < history.samples.length) {
+			sampleClassifications.warp(idx) = EXPIRED;
+			testedCount++;
+			idx--;
+		}
 	}
 }
 
@@ -221,40 +250,31 @@ final class LoudnessComputer {
 		LevelFilter levFilter;
 	}
 	float[] history;
-	float loudness;
+	float loudness = 1;
 	int numLoudnessBars;
-	int lastLoudnessBarIdx;
 
 	this(LevelHistory levHistory_, LevelFilter levFilter_) {
 		levHistory = levHistory_;
 		levFilter = levFilter_;
-		history.length = levHistory.history.length;
+		history.length = levHistory.samples.length;
 	}
 
 	void computeLoudness() {
-		int sampleCount = 0;
+		int accCount = 0;
 		int checkCount = 0;
 		real acc = 0;
-		int i = cast(int) levHistory.writtenIdx;
-		do {
-			ubyte classification = levFilter.sampleClassifications[i];
+		foreach(i, classification; levFilter.sampleClassifications) {
 			if (classification == LevelFilter.INCLUDED) {
-				sampleCount++;
-				acc += levHistory.history[i];
+				accCount++;
+				acc += levHistory.samples[i];
 			}
-			checkCount++;
-			i--;
-			if (i < 0) i = cast(int) levHistory.history.length - 1;
-		}while(sampleCount < numLoudnessBars && checkCount < levHistory.history.length);
+		}
 
-		if (sampleCount <4)
+		if (accCount <4)
 			loudness = levFilter.avgLevel;
 		else
-			loudness = acc / sampleCount;
+			loudness = acc / accCount;
 
 		history[levHistory.writtenIdx] = loudness;
-
-		lastLoudnessBarIdx = i+1;
-		if (lastLoudnessBarIdx == levHistory.history.length) lastLoudnessBarIdx = 0;
 	}
 }

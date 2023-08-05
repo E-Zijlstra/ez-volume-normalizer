@@ -1,6 +1,6 @@
 
 # Overview
-This is a volume normalizer for Microsoft Windows.
+This is a volume normalizer and/or limiter for Microsoft Windows.
 It works by reducing the windows master volume, it can not boost your audio.
 - Requirements: 64 bit windows.
 - Tested on: Windows 10.
@@ -8,7 +8,8 @@ It works by reducing the windows master volume, it can not boost your audio.
 ![controls](doc/controls.png)
 
 ## Warning
-This normalizer is experimental and may blow up your speakers or ears.
+This software has not been tested on many devices, so be careful at first, don't blow up your ears.
+Use at your own risk.
 
 
 # Installing
@@ -17,18 +18,22 @@ This normalizer is experimental and may blow up your speakers or ears.
 - Run the executable that you find under releases, or compile the source code yourself. (see below)
 
 # Changelog
+V0.7
+ - Various fixes and improvements
+ - Limiter tracks normalizer downregulation. This prevents over attenuation when the normalizer reduces volume faster then the limiter releases.
+ - Increased range to -50dB
+ - Presets
+ - Limiter attack time
+
 v0.6
  - Everything in decibels
 
 v0.5
- - Volume slider can be switched to log/decibels scale (right click on slider)
  - Added controls for delay and slowness. Previously these parameters were fixed to 30 and 30.
  - Smoother & quicker volume control
  - Limiter release is now in decibels
- - Changed the red limiter bar to show attenuation (dB), instead of netto reduction in volume. It gave confusing visualization when the normalizer kicked in.
  - Added limiter lookback parameter
-
- See manual for more details on the new controls.
+ - Other stuff
 
 v0.4
  - Device selection
@@ -42,11 +47,25 @@ v0.3
 
 # User manual
 
+### Top row
+- Power on/off
+- Soundcard selection
+- Device info and volume reported by the device
+- Volume curve: Some devices don't have a correct volume curve and produce higher/lower levels than as instructed. Try different values if you notice this. Option 4 works well on my Dell laptop.
+- Presets
+
+### Level meters
+- Input signal
+- Output signal (input reduced by normalizer & limiter)
+
+orange: limiter soft-knee range
+red: fully limited
+
 ### Target level
 ![controls](doc/target.png)
 
 The normalizer works by reducing the master volume.
-Therefore you need to set target level to some low value, like 0.2; setting it to 1 effectively disables the normalizer.
+Therefore you need to set target level to some low value, like -30dB, to give it room to increase the volume when needed; setting it to 0 effectively disables the software.
 
 The slider also sets the limiter operating range, indicated with C and L.
 These can be fine tuned with the limiter start/width setting.
@@ -55,8 +74,7 @@ These can be fine tuned with the limiter start/width setting.
 ![controls](doc/normalizer.png)
 
 The normalizer controls the volume slider to make the loudness match the target level.
-If disabled then you can set the volume yourself.
-The meter displays the signal after being attenuated by the volume slider.
+If not active then you can set the volume yourself.
 
 #### Settings
  - delay: higher values will cause a delay before the normalizer starts ramping down the volume.
@@ -70,9 +88,9 @@ Displays input signal over time. There are 5 bars per second.
 - Slowness is the number of bright bars that are kept, older bars are discarded.
 - The bright bars that are left over are averaged to determine the loudness of what is playing. This is displayed as a yellow line.
 
-##### Conclusion
-- Use higher delay to make the normalizer ignore quiet parts.
-- Use higher slowness to make the volume more stable.
+##### Summary
+- Use higher delay to make the normalizer ignorant of the now.
+- Use higher slowness to make the normalizer nostalgic, put more weight on the past. 
 
 
 ### Limiter
@@ -89,12 +107,8 @@ The limiter does not affect the volume slider, that would make it impossible to 
 #### Settings
 - start/width: operating range, relative to the target level.
 - release: how quickly to reduce the volume reduction
-- lookback: how far back to look for peaks, in millisecond. Higher values avoids pumping effects.
-  If you have low settings for the normalizer you won't notice much difference. Disable the normalizer and crank up the volume to see the effect.
+- lookback: Hold time. How far back in time to look for peaks. Higher values avoids pumping effects.
 
-
-### Low volume boost
-This may be useful or not. It changes the output volume curve.
 
 ### Power off
 - Disable normalizer

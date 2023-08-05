@@ -195,8 +195,11 @@ struct StreamListener {
 		try {
 			blockProcessor(dummy, 0);
 		}
-		catch(Error e) {
-			info(e.message);
+		catch(Throwable t) {
+			info("******* stream exception *******");
+			info(t.message);
+			info(t.file);
+			info(t.info);
 		}
 
 		uint numFramesAvailable = 0;

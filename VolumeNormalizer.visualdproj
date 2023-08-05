@@ -512,6 +512,7 @@
   <File path="lookback.d" />
   <File path="main.d" />
   <File path="README.md" />
+  <File path="settings.d" />
   <File path="streamlistener.d" />
   <File path="util.d" />
   <File path="VolumeNormalizer.d" />

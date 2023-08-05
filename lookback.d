@@ -9,7 +9,7 @@ struct Lookback {
 	uint totalMs = 100;
 
 	private {
-		float[4] slots;
+		float[8] slots;
 		int writeIdx = 0;
 		MonoTime slotWrittenAt = MonoTime.zero;
 		float mMaxValue = 0;
@@ -21,17 +21,19 @@ struct Lookback {
 	}
 
 	void put(MonoTime now, float value) {
-		float current = slots[writeIdx] = max(slots[writeIdx], value);
+		float currentAcc = slots[writeIdx] = max(slots[writeIdx], value);
 
 		ulong msPassed = (now - slotWrittenAt).total!"msecs";
 		ulong slotsPassed = min(slots.length, msPassed / slotDuration);
+		// free up a new slot if time has passed
 		if (slotsPassed > 0) {
 			for(int i=0; i<slotsPassed; i++) {
-				if (++writeIdx >= slots.length) writeIdx = 0;
-				slots[writeIdx] = current;
+				writeIdx += 1;
+				if (writeIdx >= slots.length) writeIdx = 0;
+				slots[writeIdx] = currentAcc;
 			}
-			slots[writeIdx] = 0;
 
+			slots[writeIdx] = value;
 			slotWrittenAt = now;
 			mMaxValue = slots[].maxElement;
 		}

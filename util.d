@@ -44,7 +44,8 @@ struct RGBA {
 
 
 // Access the array while wrapping around the edges
-T wrap(T)(T[] arr, int i) {
+// TODO: rename warp
+ref T warp(T)(T[] arr, long i) {
 	return arr[(i + arr.length) % arr.length];
 }
 

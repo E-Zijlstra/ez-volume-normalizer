@@ -12,9 +12,9 @@ class AnalyserGraph : VuMeterBase {
 	    Analyser analyser;
 
 		int xToHistoryIdx(int x) {
-			int idx = cast(int)( (cast(real)x) / mWidth * analyser.levelHistory.history.length );
+			int idx = cast(int)( (cast(real)x) / mWidth * analyser.levelHistory.samples.length );
 			idx += analyser.levelHistory.writeIdx; // at x = 0 this is the oldest sample (next to be overwritten)
-			idx %= analyser.levelHistory.history.length;
+			idx %= analyser.levelHistory.samples.length;
 			return idx;
 		}
 
@@ -37,43 +37,34 @@ class AnalyserGraph : VuMeterBase {
 
 
 	void paint() {
-		import std.algorithm : min, max;
 		paintBlock(0, mWidth, bgColor);
+		updateVerticalZoom();
 
-		float zoomTarget = 1f / max(0.001, analyser.levelFilter.maxLevel);
-		if (zoomTarget < levelMultiplier) {
-			if (zoomTarget < 1.2) zoomTarget = 1f;
-			levelMultiplier = zoomTarget;
-			//info("unzoom ", levelMultiplier);
-		}
-		// slowely increase zoom
-		else if (zoomTarget-0.6 > levelMultiplier) { // 0.6 hysteresis
-			float step = max(0.01, (zoomTarget - levelMultiplier) / 10); // 0.01 minimum step
-			levelMultiplier = min(zoomTarget-0.3, levelMultiplier+step); // min(-0.3) to avoid overzooming
-			//info("zoom ", levelMultiplier);
-		}
-
-		bool foundLastLoudnessBar = false;
 		foreach(x; 0 .. mWidth) {
 			int idx = xToHistoryIdx(x);
-			float level = analyser.levelHistory.history[idx];
+			float level = analyser.levelHistory.samples[idx];
 
-			if (idx == analyser.loudnessComputer.lastLoudnessBarIdx) foundLastLoudnessBar = true;
-	
-			RGBA color = accountedColor;
-			RGBA accentColor = color;
+			RGBA color;
+			RGBA accentColor;
 			ubyte classification = analyser.levelFilter.sampleClassification(idx);
-			if (classification == LevelFilter.LOW) {
+			if (classification == LevelFilter.EXPIRED) {
+				accentColor = color = discardedColor;
+			}
+			else if (classification == LevelFilter.LOW) {
 				color = accentColor = ignoredColor;
 			}
 			else if (classification == LevelFilter.HIGH) {	
 				color = ignoredColor;
-				accentColor = foundLastLoudnessBar ? peakColor : ignoredColor ;
+				accentColor = peakColor;
 			}
-			else { // accounted
-				if (!foundLastLoudnessBar)
-					accentColor = color = discardedColor;
+			else if (classification == LevelFilter.INCLUDED) {
+				color = accentColor = accountedColor;
 			}
+			else {
+				// unclassified, sample from before the beginning of time...
+				accentColor = color = discardedColor;
+			}
+
 
 			int height = cast(int)( levelMultiplier * level * mHeight + 0.5f);
 			if (classification == LevelFilter.INCLUDED && height < 1) height = 1;
@@ -87,6 +78,20 @@ class AnalyserGraph : VuMeterBase {
 			paintPixel(x, levelToY(analyser.levelFilter.averages[idx]), averageColor);
 			paintPixel(x, levelToY(analyser.loudnessComputer.history[idx]), loudnessColor);
 
+		}
+	}
+
+	void updateVerticalZoom() {
+		import std.algorithm : min, max;
+		float zoomTarget = 1f / max(0.001, analyser.levelFilter.maxLevel);
+		if (zoomTarget < levelMultiplier) {
+			if (zoomTarget < 1.2) zoomTarget = 1f;
+			levelMultiplier = zoomTarget;
+		}
+		// slowely increase zoom
+		else if (zoomTarget-0.6 > levelMultiplier) { // 0.6 hysteresis
+			float step = max(0.01, (zoomTarget - levelMultiplier) / 10); // 0.01 minimum step
+			levelMultiplier = min(zoomTarget-0.3, levelMultiplier+step); // min(-0.3) to avoid overzooming
 		}
 	}
 

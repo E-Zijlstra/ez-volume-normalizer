@@ -129,6 +129,8 @@ private:
 	}
 
 	void fillLeds(int begin, int end, RGBA rgba_, RGBA rasterColor_) {
+		if (begin >= end) return;
+
 		uint rgba = rgba_.toUint;
 		uint rasterColor = rasterColor_.toUint;
 		int stride = mPixbuf.getRowstride() /4;
@@ -138,13 +140,8 @@ private:
 		int idx = 0;
 		foreach(y; 0..mHeight) {
 			idx = y * stride + begin;
-			bool raster = false; //(y&3)==3;
 			foreach(x; begin .. end) {
-				if ( raster || (x & 0x02) == 0x2)
-					data[idx] = rasterColor;
-				else
-					data[idx] = rgba;
-				idx++;
+				data[idx++] = ( (x & 0x02) == 0x2) ? rasterColor : rgba;
 			}
 		}
 	}
@@ -152,15 +149,18 @@ private:
 	void fadeToColor(int begin, int end, RGBA rgba) {
 		int stride = mPixbuf.getRowstride();
 		char[] cdata = mPixbuf.getPixelsWithLength();
-		ubyte[] data = cast(ubyte[]) cdata;  // assuming rgba format ... (!)
+		ubyte[] data = cast(ubyte[]) cdata;
 
 		int idx = 0;
 		foreach(y; 0..mHeight) {
 			idx = y * stride + begin*4;
 			foreach(x; begin .. end) {
-				data[idx] = cast(ubyte) max(rgba.r, data[idx]-28); idx++;
-				data[idx] = cast(ubyte) max(rgba.g, data[idx]-28); idx++;
-				data[idx] = cast(ubyte) max(rgba.b, data[idx]-28); idx++;
+				//data[idx] = cast(ubyte) max(rgba.r, data[idx]-28); idx++;
+				//data[idx] = cast(ubyte) max(rgba.g, data[idx]-28); idx++;
+				//data[idx] = cast(ubyte) max(rgba.b, data[idx]-28); idx++;
+				data[idx] = (rgba.r + data[idx]+ data[idx]+ data[idx]) >> 2; idx++;
+				data[idx] = (rgba.g + data[idx]+ data[idx]+ data[idx]) >> 2; idx++;
+				data[idx] = (rgba.b + data[idx]+ data[idx]+ data[idx]) >> 2; idx++;
 				data[idx++] = 0xff; //a
 			}
 		}
