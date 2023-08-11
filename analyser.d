@@ -10,7 +10,7 @@ final class Analyser {
 
 	// visual peak captures the peak level of the last 40ms for display purposes
 	private {
-		Lookback lookback;
+		MaxLookback lookback;
 		enum lookbackMs = 60; // 40 = 25fps;
 		float mCurrentPeak = 0;
 		float mCurrentPeakDb = -100;

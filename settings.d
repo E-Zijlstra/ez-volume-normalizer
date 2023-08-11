@@ -27,11 +27,19 @@ struct Settings {
 	);
 
 	static const Settings conference = Settings(
-		"Conversation",
+		"Online call",
 		20, 10,
-		-6.0, 1.3,
-		50,
-		500, 16
+		-8.0, 1.3,
+		200,
+		1300, 3
+	);
+
+	static const Settings conference2 = Settings(
+		"Conversation Flat",
+		20, 10,
+		-8.0, 1.3,
+		20,
+		200, 4
 	);
 
 	static const Settings music = Settings(

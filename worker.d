@@ -218,7 +218,6 @@ private:
 		synchronized(mLimiter) {
 			Limiter limiter = cast(Limiter)(mLimiter);
 			limiter.setCurrentVolume(volumeInterpolator.volume, volumeInterpolator.volumeDb);
-			if (ticked) limiter.release();
 			limiter.process(now, pk);
 		}
 		

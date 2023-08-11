@@ -507,6 +507,7 @@
   </Folder>
   <File path="analyser.d" />
   <File path="analysergraph.d" />
+  <File path="changelog.txt" />
   <File path="LICENSE.md" />
   <File path="limiter.d" />
   <File path="lookback.d" />

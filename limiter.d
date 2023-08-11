@@ -27,17 +27,17 @@ final class Limiter {
 	float limitedVolumeDb = 0f;
 
 	private {
-		Lookback hold;
+		MaxLookback hold;
+		MinLookback attnHold;
 		float prevUnlimitedVolumeDb = 0;
 		float unlimitedVolume = 1f;
 		float unlimitedVolumeDb = 0;
-
-		bool releasable = true;
 		MonoTime lastProcess = MonoTime.zero;
 	}
 
 	@property void holdTimeMs(uint ms) {
 		hold.totalMs = ms;
+		attnHold.totalMs = ms;
 	}
 
 	this() {
@@ -54,8 +54,6 @@ final class Limiter {
 
 
 	void process(MonoTime now, float inputSignal) {
-		ulong msPassed = (now - lastProcess).total!"msecs";
-		hold.put(now, inputSignal);
 
 		if (!enabled) {
 			limitedVolumeDb = unlimitedVolumeDb;
@@ -63,33 +61,50 @@ final class Limiter {
 			return;
 		}
 
-		float peak = hold.totalMs == 0 ? inputSignal : hold.maxValue;
-		real normalizedSig = unlimitedVolume * peak;
-		real limitedSig = softKneeLimit(normalizedSig);
+		hold.put(now, inputSignal);
+		float peak;
+		if (attackMs == 0)
+			peak = hold.totalMs == 0 ? inputSignal : hold.maxValue;
+		else
+			peak = inputSignal;
 
-		// avoid division by zero 
-		//real attn = toDb(limitedSig) - toDb(normalizedSig); assert(attn <= 0.0);
-		real attn = toDb(limitedSig/normalizedSig);
-		real attnTravel = attn - attenuationDb;
-		if (attackMs == 0) {
-			attenuationDb = min(attenuationDb, attn);
-		}
-		else {
-			attenuationDb = attenuationDb + min(0, attnTravel) * (msPassed / attackMs);
-		}
-
-		// correct for volume reductions by the normalizer
+		// reduce attenuation by what the normalizer already did
 		real volumeChange = unlimitedVolumeDb - prevUnlimitedVolumeDb;
 		if (volumeChange < 0) {
 			attenuationDb = min(0, attenuationDb - volumeChange);
-			releasable = false;
+		}
+		prevUnlimitedVolumeDb = unlimitedVolumeDb;
+
+		real msPassed = (now - lastProcess).total!"msecs";
+		real normalizedSig = unlimitedVolume * peak;
+		real limitedSig = softKneeLimit(normalizedSig);
+		real desiredAttn = min(toDb(limitedSig/normalizedSig), 0); // div zero doesn't seem to have an effect. alt: toDb(limitedSig) - toDb(normalizedSig);
+		real releaseCeil = 0;
+		if (attackMs == 0) {
+			attenuationDb = min(desiredAttn, attenuationDb);
+			releaseCeil = desiredAttn;
 		}
 		else {
-			releasable = attnTravel > 0;
+			if (desiredAttn < attenuationDb) {
+				real attnTravel = desiredAttn - attenuationDb;
+				real attackedAttn = attenuationDb + attnTravel * min(1, msPassed / attackMs);
+				attenuationDb = min(attenuationDb, attackedAttn);
+				// attack done, store full attenuation so the level will be held
+				attnHold.put(now, attackedAttn);
+			}
+			else {
+				attnHold.put(now, 0);
+			}
+			releaseCeil = attnHold.minValue;
+		}
+
+		// release
+		if (desiredAttn > attenuationDb) {
+			real step = releasePerSecond * msPassed / 1000.0;
+			attenuationDb = min(attenuationDb + step, releaseCeil);
 		}
 
 		limitedVolumeDb = unlimitedVolumeDb + attenuationDb;
-		prevUnlimitedVolumeDb = unlimitedVolumeDb;
 		lastProcess = now;
 	}
 
@@ -109,13 +124,5 @@ final class Limiter {
 		return s2;
 	}
 
-	// call on each tick
-	void release() {
-		alias attn = attenuationDb;
-		if (attn == 0f || !releasable) return;
-
-		real step = (releasePerSecond / ticksPerSecond);
-		attn = min(0, attn + step);
-	}
 
 }

@@ -18,6 +18,8 @@ Use at your own risk.
 - Run the executable that you find under releases, or compile the source code yourself. (see below)
 
 # Changelog
+v0.7.1
+ - Fixed limiter overshooting when using attack.
 V0.7
  - Various fixes and improvements
  - Limiter tracks normalizer downregulation. This prevents over attenuation when the normalizer reduces volume faster then the limiter releases.
@@ -25,25 +27,6 @@ V0.7
  - Presets
  - Limiter attack time
 
-v0.6
- - Everything in decibels
-
-v0.5
- - Added controls for delay and slowness. Previously these parameters were fixed to 30 and 30.
- - Smoother & quicker volume control
- - Limiter release is now in decibels
- - Added limiter lookback parameter
- - Other stuff
-
-v0.4
- - Device selection
- - Rearranged UI
- - Tweaked limiter defaults
-
-v0.3
-- loudness analyzer improvements
-- added volume/time analyzer graph, mainly for analysis of future improvements
-- send decibels to win api, fixes non-linear volume curves on some devices
 
 # User manual
 
@@ -106,8 +89,9 @@ The limiter does not affect the volume slider, that would make it impossible to 
 
 #### Settings
 - start/width: operating range, relative to the target level.
+- attack: how quickly to reduce the volume when the signal goes above the start level
+- hold
 - release: how quickly to reduce the volume reduction
-- lookback: Hold time. How far back in time to look for peaks. Higher values avoids pumping effects.
 
 
 ### Power off

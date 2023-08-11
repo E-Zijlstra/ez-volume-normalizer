@@ -114,7 +114,7 @@ class UI {
 	void open() {
 		worker = new Worker();
 		endpoints = worker.stream.getEndpoints();
-		win = new MainWindow("EZ Volume Normalizer 0.7  -  github.com/E-Zijlstra/ez-volume-normalizer");
+		win = new MainWindow("EZ Volume Normalizer 0.7.1  -  github.com/E-Zijlstra/ez-volume-normalizer");
 		win.setDefaultSize(630, 300);
 
 		Box mainVsplit = new Box(GtkOrientation.VERTICAL, 0);
@@ -218,7 +218,7 @@ class UI {
 			uiLimiterStart = wrapTopLabel(hbox1, "start offset (dB)", new SpinButton(-24, 24, 0.1));
 			uiLimiterWidth = wrapTopLabel(hbox1, "width (dB)", new SpinButton(0.1, 24, 0.1));
 			uiLimiterAttack = wrapTopLabel(hbox1, "attack (ms)", new SpinButton(0, 1000, 10));
-			uiLimiterHold = wrapTopLabel(hbox1, "lookback (ms)", new SpinButton(0, 10000, 10));
+			uiLimiterHold = wrapTopLabel(hbox1, "hold (ms)", new SpinButton(0, 10000, 10));
 			uiLimiterRelease = wrapTopLabel(hbox1, "release (dB/s)", new SpinButton(0.5, 80, 0.25));
 
 			uiLimiterStart.addOnValueChanged( (SpinButton e) { setLimiterParameters(); } );

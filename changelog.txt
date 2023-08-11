@@ -1,0 +1,28 @@
+v0.7.1
+ - Fixed limiter overshooting when using attack.
+V0.7
+ - Various fixes and improvements
+ - Limiter tracks normalizer downregulation. This prevents over attenuation when the normalizer reduces volume faster then the limiter releases.
+ - Increased range to -50dB
+ - Presets
+ - Limiter attack time
+
+v0.6
+ - Everything in decibels
+
+v0.5
+ - Added controls for delay and slowness. Previously these parameters were fixed to 30 and 30.
+ - Smoother & quicker volume control
+ - Limiter release is now in decibels
+ - Added limiter lookback parameter
+ - Other stuff
+
+v0.4
+ - Device selection
+ - Rearranged UI
+ - Tweaked limiter defaults
+
+v0.3
+- loudness analyzer improvements
+- added volume/time analyzer graph, mainly for analysis of future improvements
+- send decibels to win api, fixes non-linear volume curves on some devices

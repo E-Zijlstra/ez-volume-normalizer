@@ -4,7 +4,11 @@ import std.datetime;
 import std.algorithm;
 import std.math;
 
-struct Lookback {
+
+alias MaxLookback = Lookback!true;
+alias MinLookback = Lookback!false;
+
+struct Lookback(bool useMax = true) {
 
 	uint totalMs = 100;
 
@@ -13,6 +17,7 @@ struct Lookback {
 		int writeIdx = 0;
 		MonoTime slotWrittenAt = MonoTime.zero;
 		float mMaxValue = 0;
+		float mMinValue = 0;
 	}
 
 	@property ulong slotDuration() {
@@ -21,7 +26,10 @@ struct Lookback {
 	}
 
 	void put(MonoTime now, float value) {
-		float currentAcc = slots[writeIdx] = max(slots[writeIdx], value);
+		static if (useMax)
+			float currentAcc = slots[writeIdx] = max(slots[writeIdx], value);
+		else
+			float currentAcc = slots[writeIdx] = min(slots[writeIdx], value);
 
 		ulong msPassed = (now - slotWrittenAt).total!"msecs";
 		ulong slotsPassed = min(slots.length, msPassed / slotDuration);
@@ -35,14 +43,26 @@ struct Lookback {
 
 			slots[writeIdx] = value;
 			slotWrittenAt = now;
-			mMaxValue = slots[].maxElement;
+			if (useMax)
+				mMaxValue = slots[].maxElement;
+			else
+				mMinValue = slots[].minElement;
 		}
 		else {
-			mMaxValue = max(mMaxValue, value);
+			static if (useMax)
+				mMaxValue = max(mMaxValue, value);
+			else
+				mMinValue = min(mMinValue, value);
 		}
 	}
 
-	@property float maxValue() {
-		return mMaxValue;
+	static if (useMax) {
+		@property float maxValue() {
+			return mMaxValue;
+		}
+	} else {
+		@property float minValue() {
+			return mMinValue;
+		}
 	}
 }
