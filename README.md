@@ -20,6 +20,7 @@ Use at your own risk.
 # Changelog
 v0.7.1
  - Fixed limiter overshooting when using attack.
+
 V0.7
  - Various fixes and improvements
  - Limiter tracks normalizer downregulation. This prevents over attenuation when the normalizer reduces volume faster then the limiter releases.
