@@ -29,6 +29,7 @@ struct StreamListener {
 	float requestedDb;
 	string deviceId;
 	float minDb, maxDb, incDb;
+	bool highQuality = false;
 
 	IAudioEndpointVolume endpointVolume;
 	GUID volumeGuid;
@@ -208,7 +209,7 @@ struct StreamListener {
 			uint numFramesAvailable = 0;
 			captureClient.GetNextPacketSize(numFramesAvailable);
 			if (numFramesAvailable == 0) {
-				Thread.sleep(usecs(1)); // Sleeping here is the optimal place. It stil may miss a few samples (<40/s) but that's better than having 20% cpu usage.
+				if (!highQuality) Thread.sleep(usecs(1)); // Sleeping here is the optimal place. It stil may miss a few samples (<40/s) but that's better than having 20% cpu usage.
 				continue;
 			}
 

@@ -7,7 +7,7 @@ import core.time;
 import core.thread.osthread;
 import std.algorithm.comparison, std.math.algebraic, core.atomic;
 import streamlistener;
-import limiter, analyser;
+import limiter, analyser, psychoacoustics;
 
 import util;
 
@@ -108,6 +108,8 @@ class Worker {
 	Analyser analyser;
 	Limiter mLimiter;
 	VolumeInterpolator volumeInterpolator;
+	PsychoAcoustics psychoAcoustics;
+	bool psychoAcousticsEnabled;
 
 	void syncLimiter(void delegate(Limiter l) synchronizedAction) {
 		synchronized(mLimiter) {
@@ -126,6 +128,7 @@ class Worker {
 		enum samplesPerSecond = 5; // 1000/5 = 200ms
 		enum msPerSample = 1000/samplesPerSecond;
 		analyser = new Analyser(30*samplesPerSecond, msPerSample);
+		psychoAcoustics = new PsychoAcoustics();
 	}
 
 	void start() {
@@ -133,8 +136,11 @@ class Worker {
 		stream.state = State.starting;
 		thread = new Thread(&run);
 		thread.start();
+
 		while(stream.state == State.starting) { }
+
 		volumeInterpolator.setMinVolumeDb(stream.minDb);
+		psychoAcoustics.setSampleRate(stream.sampleRate);
 	}
 
 	void stop() {
@@ -142,6 +148,10 @@ class Worker {
 		while(stream.state != State.stopped) {
 			Thread.sleep(dur!"msecs"(1));
 		}
+	}
+
+	void setDeviceId(string id) {
+		stream.deviceId = id;
 	}
 
 	// control
@@ -198,8 +208,10 @@ private:
 			stream.loop(&processBlock);
 		}
 		catch(Throwable e) {
+			error(e.info);
 			error(e.msg);
 		}
+		stream.state = State.stopped;
 		info("Worker exited");
 	}
 
@@ -212,7 +224,12 @@ private:
 		//if (runningTime > 0) info(cast(int)(totalFrames / runningTime)); // about 10ms of data
 
 		now = MonoTime.currTime;
-		float pk = floatDataToPeak(data, numFramesAvailable);
+		float pk = floatDataToPeak(data);
+		if (psychoAcousticsEnabled) {
+			psychoAcoustics.process(data);
+			float accousticCorrection = psychoAcoustics.correction.toLinear;
+			pk *= accousticCorrection;
+		}
 
 		bool loudnessChanged = analyser.processLevel(pk);
 
@@ -236,7 +253,7 @@ private:
 		processedFrames = processedFrames + numFramesAvailable;
 	}
 
-	float floatDataToPeak(float[] data, uint numFramesAvailable) {
+	float floatDataToPeak(float[] data) {
 		float pk = 0;
 		foreach(ref const sample; data) {
 			pk = max(pk, abs(sample));

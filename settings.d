@@ -20,10 +20,10 @@ struct Settings {
 
 	static const Settings movie = Settings(
 		"Movie",
-		10, 10,
-		1.5, 2.6,
-		200,
-		1500, 0.75
+		8, 8,
+		1.4, 2.1,
+		0,
+		1500, 1
 	);
 
 	static const Settings conference = Settings(

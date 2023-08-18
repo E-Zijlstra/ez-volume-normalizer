@@ -58,6 +58,9 @@ class UI {
 	ComboBoxText uiSettings;
 	CurveCorrection uiCurveCorrection;
 
+	CheckButton uiEnableBassCorrection;
+	LevelBar uiBassCorrection;
+	SpinButton uiBassCorrectionTime;
 
 	Image   uiSignalVuImg;
 	VuMeter uiSignalVu;
@@ -98,12 +101,18 @@ class UI {
 		border-width: 1px;
 		}
 		levelbar block.high {
-		background-color: green;
+		background-color: lime;
 		border-style: solid;
 		border-color: black;
 		border-width: 1px;
 		}
-	";
+		levelbar block.low {
+		background-color: lime;
+		border-style: solid;
+		border-color: black;
+		border-width: 1px;
+		}
+		";
 
 	const limiterCss = "
 		levelbar block.filled {
@@ -114,7 +123,7 @@ class UI {
 	void open() {
 		worker = new Worker();
 		endpoints = worker.stream.getEndpoints();
-		win = new MainWindow("EZ Volume Normalizer 0.7.1  -  github.com/E-Zijlstra/ez-volume-normalizer");
+		win = new MainWindow("EZ Volume Normalizer 0.7.2  -  github.com/E-Zijlstra/ez-volume-normalizer");
 		win.setDefaultSize(630, 300);
 
 		Box mainVsplit = new Box(GtkOrientation.VERTICAL, 0);
@@ -152,7 +161,6 @@ class UI {
 			devInfo.add(uiMasterDecibel = new Label("0 dB"));
 
 			uiCurveCorrection = new CurveCorrection(this, frame);
-
 		}
 
 		{
@@ -163,6 +171,38 @@ class UI {
 				uiSettings.appendText(s.name);
 			}
 		}
+
+		{
+			Box frame = topRow.addFrame("low frequency boost").addHButtonBox();
+			frame.setSizeRequest(200,0);
+			uiBassCorrection = levelMeter(5, false, false);
+			uiBassCorrection.setDoubleBuffered(false);
+			uiBassCorrection.setInverted(true);
+			uiBassCorrection.setMinValue(0);
+			uiBassCorrection.setMaxValue(1);
+			uiBassCorrection.setMarginTop(0);
+			uiBassCorrection.setMarginBottom(0);
+			uiBassCorrection.setVexpand(true);
+			uiBassCorrection.setValue(0);
+			uiBassCorrection.addOffsetValue(GTK_LEVEL_BAR_OFFSET_LOW, 0.0);
+			uiBassCorrection.addOffsetValue(GTK_LEVEL_BAR_OFFSET_HIGH, 0.5);
+			uiBassCorrection.addOffsetValue(GTK_LEVEL_BAR_OFFSET_FULL, 1);
+			uiBassCorrection.addStyle(levelCss);
+			uiEnableBassCorrection = wrapTopLabel(frame, "enable", new CheckButton(""));
+			uiEnableBassCorrection.addOnToggled( (btn) {
+				worker.psychoAcousticsEnabled = btn.getActive();
+				worker.stream.highQuality = btn.getActive();
+				uiBassCorrection.setValue(0);
+			});
+			uiBassCorrectionTime = wrapTopLabel(frame, "time (ms)", new SpinButton(50, 1000, 10));
+			uiBassCorrectionTime.setValue(worker.psychoAcoustics.time*1000.0);
+			uiBassCorrectionTime.addOnValueChanged((SpinButton btn) {
+				worker.psychoAcoustics.setTime(btn.getValue()/1000.0);
+			});
+
+			frame.add(uiBassCorrection);
+		}
+
 
 		{	// vu meters
 			Box frame = addFrame(vleft, "input / output");
@@ -217,7 +257,7 @@ class UI {
 
 			uiLimiterStart = wrapTopLabel(hbox1, "start offset (dB)", new SpinButton(-24, 24, 0.1));
 			uiLimiterWidth = wrapTopLabel(hbox1, "width (dB)", new SpinButton(0.1, 24, 0.1));
-			uiLimiterAttack = wrapTopLabel(hbox1, "attack (ms)", new SpinButton(0, 1000, 10));
+			uiLimiterAttack = wrapTopLabel(hbox1, "attack (ms)", new SpinButton(0, 500, 5));
 			uiLimiterHold = wrapTopLabel(hbox1, "hold (ms)", new SpinButton(0, 10000, 10));
 			uiLimiterRelease = wrapTopLabel(hbox1, "release (dB/s)", new SpinButton(0.5, 80, 0.25));
 
@@ -261,7 +301,7 @@ class UI {
 
 		// default values
 		uiSettings.setActive(0);
-		uiTargetLevel.setValue(-25);
+		uiTargetLevel.setValue(-28);
 		uiEnableLimiter.setActive(true);
 		uiEnableNormalizer.setActive(true);
 
@@ -289,7 +329,7 @@ class UI {
 	}
 
 	void onDeviceChanged(ComboBoxText combo) {
-		worker.stream.deviceId = combo.getActiveId();
+		worker.setDeviceId(combo.getActiveId());
 		info("device changed to", combo.getActiveId());
 		if (worker.state == Worker.State.running) {
 			worker.stop();
@@ -414,6 +454,10 @@ class UI {
 		// volume slider
 		autoSetVolume = worker.volumeInterpolator.volumeDb;
 		uiMasterVolume.setValue(autoSetVolume);
+
+		// psycho acoustics
+		if (uiEnableBassCorrection.getActive())
+			uiBassCorrection.setValue(worker.psychoAcoustics.perception);
 	}
 
 

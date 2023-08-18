@@ -42,7 +42,7 @@ class AnalyserGraph : VuMeterBase {
 
 		foreach(x; 0 .. mWidth) {
 			int idx = xToHistoryIdx(x);
-			float level = analyser.levelHistory.samples[idx];
+			float level = clamp01(analyser.levelHistory.samples[idx]);
 
 			RGBA color;
 			RGBA accentColor;

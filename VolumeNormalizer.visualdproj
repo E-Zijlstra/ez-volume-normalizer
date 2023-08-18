@@ -139,7 +139,7 @@
   <verbose>0</verbose>
   <vtls>0</vtls>
   <vgc>0</vgc>
-  <symdebug>0</symdebug>
+  <symdebug>1</symdebug>
   <symdebugref>1</symdebugref>
   <optimize>1</optimize>
   <cpu>0</cpu>
@@ -512,6 +512,7 @@
   <File path="limiter.d" />
   <File path="lookback.d" />
   <File path="main.d" />
+  <File path="psychoacoustics.d" />
   <File path="README.md" />
   <File path="settings.d" />
   <File path="streamlistener.d" />
