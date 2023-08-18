@@ -194,6 +194,7 @@ private:
 
 	void run() {
 		try {
+			//started = MonoTime.currTime;
 			stream.loop(&processBlock);
 		}
 		catch(Throwable e) {
@@ -202,8 +203,14 @@ private:
 		info("Worker exited");
 	}
 
+	//ulong totalFrames;
+	//MonoTime started;
+
 	void processBlock(float[] data, uint numFramesAvailable) {
-		//info(data.length); // about 10ms of data
+		//totalFrames += numFramesAvailable;
+		//float runningTime = (MonoTime.currTime - started).total!"msecs" / 1000f;
+		//if (runningTime > 0) info(cast(int)(totalFrames / runningTime)); // about 10ms of data
+
 		now = MonoTime.currTime;
 		float pk = floatDataToPeak(data, numFramesAvailable);
 

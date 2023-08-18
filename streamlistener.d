@@ -137,14 +137,14 @@ struct StreamListener {
 		uint res = CoCreateInstance(&CLSID_MMDeviceEnumerator, null, CLSCTX_ALL, &IID_IMMDeviceEnumerator, cast(void**)&deviceEnumerator);
 		if (res != 0) return;
 
-		IMMDevice speakers;
-		//deviceEnumerator.GetDefaultAudioEndpoint(EDataFlow.eRender, ERole.eConsole, speakers);
+		IMMDevice device;
+		//deviceEnumerator.GetDefaultAudioEndpoint(EDataFlow.eRender, ERole.eConsole, device);
 		import std.utf;
 		const(wchar)* wcId = deviceId.toUTF16z;
-		deviceEnumerator.GetDevice(wcId, &speakers);
-		if (speakers is null) return;
+		deviceEnumerator.GetDevice(wcId, &device);
+		if (device is null) return;
 
-		speakers.Activate(IID_IAudioEndpointVolume, CLSCTX_ALL, null, cast(void**)&endpointVolume);
+		device.Activate(IID_IAudioEndpointVolume, CLSCTX_ALL, null, cast(void**)&endpointVolume);
 		if (res != 0) return;
 
 		// get dB volume range		
@@ -153,7 +153,7 @@ struct StreamListener {
 
 		// Get a pointer to the audio client
 		IAudioClient audioClient;
-		speakers.Activate(IID_IAudioClient, CLSCTX_ALL, null, cast(void**)&audioClient);
+		device.Activate(IID_IAudioClient, CLSCTX_ALL, null, cast(void**)&audioClient);
 
 		// Get the current audio format
 		//# https://learn.microsoft.com/en-us/windows/win32/api/mmeapi/ns-mmeapi-waveformatex
@@ -172,14 +172,14 @@ struct StreamListener {
 		// Initialize the client
 		const REFTIMES_PER_SEC = 1000_000_0;  // 1 unit == 100 nanoseconds
 		int requestedDuration = REFTIMES_PER_SEC / capatureHz;
-		info("Request duration " ~ requestedDuration.tos);
+		info("Request duration ", requestedDuration.tos);
 		res = audioClient.Initialize(AUDCLNT_SHAREMODE.AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_LOOPBACK, requestedDuration, 0, format, null);
 		if (res != 0) return;
 
 		// Get the buffer size
 		uint bufferDuration;
 		audioClient.GetBufferSize(bufferDuration);
-		info("Got duration " ~ requestedDuration.tos);
+		info("Got buffersize ", bufferDuration);
 		if (bufferDuration == 0) return;
 
 		// Get a pointer to the audio capture client
@@ -202,24 +202,15 @@ struct StreamListener {
 			info(t.info);
 		}
 
-		uint numFramesAvailable = 0;
-		int sleepUs = 5;
-		int idleCount;
 		state = State.running;
 		while (state == State.running) {
-			//Thread.sleep(dur!"msecs"(1));
-			if (sleepUs > 0) Thread.sleep(dur!"usecs"(sleepUs));
-
 			// Get the next packet of data
+			uint numFramesAvailable = 0;
 			captureClient.GetNextPacketSize(numFramesAvailable);
 			if (numFramesAvailable == 0) {
-				idleCount++;
+				Thread.sleep(usecs(1)); // Sleeping here is the optimal place. It stil may miss a few samples (<40/s) but that's better than having 20% cpu usage.
 				continue;
 			}
-
-			if (idleCount > 100) sleepUs++;
-			if (idleCount == 0 && sleepUs > 0) sleepUs--;
-			idleCount = 0;
 
 			// Get a pointer to the data
 			BYTE* data;
@@ -230,23 +221,13 @@ struct StreamListener {
 			blockProcessor(fdata, numFramesAvailable);
 
 			captureClient.ReleaseBuffer(numFramesAvailable);
-
 		}
 
-		// Stop recording
-		audioClient.Stop();
-
-		// Release the audio client
+		audioClient.Stop();		// Stop recording
 		audioClient.Release();
-
-		// Release the speakers
-		speakers.Release();
-
-		// Release the device enumerator
+		device.Release();
 		deviceEnumerator.Release();
-
-		// Uninitialize the COM library
-		CoUninitialize();
+		CoUninitialize();		// Uninitialize the COM library
 		state = State.stopped;
 	}
 }
