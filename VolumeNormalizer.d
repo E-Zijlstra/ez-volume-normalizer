@@ -488,10 +488,7 @@ class UI {
 
 private LevelBar levelMeter(int thickness=5, bool cols=false, bool horizontal = true) {
 	auto lb = new LevelBar();
-	version(decibels) {
-		lb.setMinValue(0);
-		lb.setMaxValue(60);
-	}
+
 	if (horizontal)
 		lb.setProperty("height-request", thickness);
 	else {
@@ -578,15 +575,15 @@ class CurveCorrection : ComboBoxText {
 		vn = vn_;
 
 		super(false);
-		appendText("4");
-		appendText("3.5");
-		appendText("3.0");
-		appendText("2.5");
-		appendText("2.0");
+		appendText("1.6");
 		appendText("1.5");
+		appendText("1.4");
+		appendText("1.3");
+		appendText("1.2");
+		appendText("1.1");
 		appendText("1.0");
-		appendText("0.75");
-		appendText("0.5");
+		appendText("0.95");
+		appendText("0.90");
 		setTooltipText("Curve correction");
 		addOnChanged(&onChanged);
 		cont.add(this);

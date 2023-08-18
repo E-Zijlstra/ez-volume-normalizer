@@ -264,16 +264,19 @@ private:
 	
 	// resolution of endpoint is typically 0.4db
 	void setEndpointVolume() {
+		import std.math: pow;
+		//import core.stdc.math: cpow = pow;
+
 		float db = min(volumeInterpolator.volumeDb, mLimiter.limitedVolumeDb);
 		db = quantize(db, 0.1f);
 		if (db == previousEndpointVolume) return;
 
 		previousEndpointVolume = db;
 		if (lowVolumeBoost != 1) {
-			db = db / lowVolumeBoost - (lowVolumeBoost*lowVolumeBoost);
+			float db0 = db;
+			db = -pow(-db, 1.0/lowVolumeBoost);
+			//info(db0, " -> ", db);
 		}
 		stream.setVolumeDb(db);
 	}
-
-
 }
