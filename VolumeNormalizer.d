@@ -125,6 +125,7 @@ class UI {
 		endpoints = worker.stream.getEndpoints();
 		win = new MainWindow("EZ Volume Normalizer 0.7.2  -  github.com/E-Zijlstra/ez-volume-normalizer");
 		win.setDefaultSize(630, 300);
+		win.modifyFont("Carlito", 9);
 
 		Box mainVsplit = new Box(GtkOrientation.VERTICAL, 0);
 		win.add(mainVsplit);
@@ -176,23 +177,22 @@ class UI {
 			Box frame = topRow.addFrame("low frequency boost").addHButtonBox();
 			frame.setSizeRequest(200,0);
 			uiBassCorrection = levelMeter(5, false, false);
-			uiBassCorrection.setDoubleBuffered(false);
 			uiBassCorrection.setInverted(true);
 			uiBassCorrection.setMinValue(0);
 			uiBassCorrection.setMaxValue(1);
 			uiBassCorrection.setMarginTop(0);
 			uiBassCorrection.setMarginBottom(0);
 			uiBassCorrection.setVexpand(true);
-			uiBassCorrection.setValue(0);
+			uiBassCorrection.setValue(0.5);
 			uiBassCorrection.addOffsetValue(GTK_LEVEL_BAR_OFFSET_LOW, 0.0);
 			uiBassCorrection.addOffsetValue(GTK_LEVEL_BAR_OFFSET_HIGH, 0.5);
 			uiBassCorrection.addOffsetValue(GTK_LEVEL_BAR_OFFSET_FULL, 1);
 			uiBassCorrection.addStyle(levelCss);
-			uiEnableBassCorrection = wrapTopLabel(frame, "enable", new CheckButton(""));
+			uiEnableBassCorrection = wrapTopLabel(frame, "active", new CheckButton(""));
 			uiEnableBassCorrection.addOnToggled( (btn) {
 				worker.psychoAcousticsEnabled = btn.getActive();
 				worker.stream.highQuality = btn.getActive();
-				uiBassCorrection.setValue(0);
+				uiBassCorrection.setValue(0.5);
 			});
 			uiBassCorrectionTime = wrapTopLabel(frame, "time (ms)", new SpinButton(50, 1000, 10));
 			uiBassCorrectionTime.setValue(worker.psychoAcoustics.time*1000.0);
