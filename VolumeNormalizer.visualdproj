@@ -139,8 +139,8 @@
   <verbose>0</verbose>
   <vtls>0</vtls>
   <vgc>0</vgc>
-  <symdebug>1</symdebug>
-  <symdebugref>1</symdebugref>
+  <symdebug>0</symdebug>
+  <symdebugref>0</symdebugref>
   <optimize>1</optimize>
   <cpu>0</cpu>
   <isX86_64>1</isX86_64>
@@ -505,8 +505,14 @@
    <File path="doc\controls.png" />
    <File path="doc\gtk-build-from-git-bash.sh" />
   </Folder>
+  <Folder name="ui">
+   <File path="ui\analysergraph.d" />
+   <File path="ui\settings.d" />
+   <File path="ui\VolumeNormalizer.d" />
+   <File path="ui\vumeter.d" />
+   <File path="ui\vumeterbase.d" />
+  </Folder>
   <File path="analyser.d" />
-  <File path="analysergraph.d" />
   <File path="changelog.txt" />
   <File path="LICENSE.md" />
   <File path="limiter.d" />
@@ -514,12 +520,8 @@
   <File path="main.d" />
   <File path="psychoacoustics.d" />
   <File path="README.md" />
-  <File path="settings.d" />
   <File path="streamlistener.d" />
   <File path="util.d" />
-  <File path="VolumeNormalizer.d" />
-  <File path="vumeter.d" />
-  <File path="vumeterbase.d" />
   <File path="windows.d" />
   <File path="worker.d" />
  </Folder>

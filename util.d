@@ -50,7 +50,7 @@ ref T warp(T)(T[] arr, long i) {
 }
 
 import std.math;
-import core.stdc.math: cpow = pow; // std.math.pow only works for integers
+import core.stdc.math: cpow = pow;
 
 T toDb(T : float)(T t) {
 	if (t < 0.00001) t = 0.00001;
