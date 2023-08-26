@@ -101,8 +101,10 @@ class Worker {
 		float actualVolumeDb;
 		bool mOverrideVolume = false;
 		float lowVolumeBoost = 1;
-
 	}
+
+	import timelapse;
+	private TimeLapser timeLapser;
 
 	StreamListener stream;
 	Analyser analyser;
@@ -137,6 +139,7 @@ class Worker {
 		thread = new Thread(&run);
 		thread.start();
 
+		timeLapser.reset();
 		while(stream.state == State.starting) { }
 
 		volumeInterpolator.setMinVolumeDb(stream.minDb);
@@ -200,7 +203,6 @@ private:
 	// ---- audio processing
 
 	Thread thread;
-	MonoTime now;
 
 	void run() {
 		try {
@@ -223,7 +225,7 @@ private:
 		//float runningTime = (MonoTime.currTime - started).total!"msecs" / 1000f;
 		//if (runningTime > 0) info(cast(int)(totalFrames / runningTime)); // about 10ms of data
 
-		now = MonoTime.currTime;
+		TimeLapse lapse = timeLapser.elapse();
 		float pk = floatDataToPeak(data);
 		if (psychoAcousticsEnabled) {
 			psychoAcoustics.process(data);
@@ -231,9 +233,9 @@ private:
 			pk *= accousticCorrection;
 		}
 
-		bool loudnessChanged = analyser.processLevel(pk);
+		bool loudnessChanged = analyser.processLevel(lapse, pk);
 
-		bool ticked = tick();
+		bool ticked = tick(lapse);
 		if (ticked && !mOverrideVolume) {
 			setVolumeFromAnalyser();
 			volumeInterpolator.tick(1f/ticksPerSecond);
@@ -242,7 +244,7 @@ private:
 		synchronized(mLimiter) {
 			Limiter limiter = cast(Limiter)(mLimiter);
 			limiter.setCurrentVolume(volumeInterpolator.volume, volumeInterpolator.volumeDb);
-			limiter.process(now, pk);
+			limiter.process(lapse, pk);
 		}
 		
 		setEndpointVolume();
@@ -268,9 +270,9 @@ private:
 	}
 
 	MonoTime lastTickExecuted;
-	bool tick() {
-		if (now - lastTickExecuted < tickInterval) return false;
-		lastTickExecuted = now;
+	bool tick(ref const TimeLapse timeLapse) {
+		if (timeLapse.now - lastTickExecuted < tickInterval) return false;
+		lastTickExecuted = timeLapse.now;
 		return true;
 	}
 

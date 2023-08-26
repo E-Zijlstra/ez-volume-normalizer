@@ -9,6 +9,7 @@ import util;
 
 import core.time;
 import lookback;
+import timelapse;
 
 // https://dsp.stackexchange.com/questions/73619/how-to-derive-equation-for-second-order-interpolation-of-soft-knee-cutoff-in-a-c
 final class Limiter {
@@ -29,10 +30,8 @@ final class Limiter {
 	private {
 		MaxLookback hold;
 		MinLookback attnHold;
-		float prevUnlimitedVolumeDb = 0;
 		float unlimitedVolume = 1f;
 		float unlimitedVolumeDb = 0;
-		MonoTime lastProcess = MonoTime.zero;
 	}
 
 	@property void holdTimeMs(uint ms) {
@@ -53,7 +52,7 @@ final class Limiter {
 	}
 
 
-	void process(MonoTime now, float inputSignal) {
+	void process(ref const TimeLapse timeLapse, float inputSignal) {
 
 		if (!enabled) {
 			limitedVolumeDb = unlimitedVolumeDb;
@@ -61,25 +60,18 @@ final class Limiter {
 			return;
 		}
 
-		hold.put(now, inputSignal);
-		float peak;
-		if (attackMs == 0)
-			peak = hold.totalMs == 0 ? inputSignal : hold.maxValue;
-		else
-			peak = inputSignal;
+		hold.put(timeLapse.now, inputSignal);
+		float peak = (attackMs > 0 || hold.totalMs == 0) ?
+			inputSignal
+		:
+			hold.maxValue;
 
-		// reduce attenuation by what the normalizer already did
-		real volumeChange = unlimitedVolumeDb - prevUnlimitedVolumeDb;
-		if (volumeChange < 0) {
-			attenuationDb = min(0, attenuationDb - volumeChange);
-		}
-		prevUnlimitedVolumeDb = unlimitedVolumeDb;
+		reduceAttenuationByNormalizerChange();
 
-		real msPassed = (now - lastProcess).total!"msecs";
 		real normalizedSig = unlimitedVolume * peak;
 		real limitedSig = softKneeLimit(normalizedSig);
 		real desiredAttn = min(toDb(limitedSig/normalizedSig), 0); // div zero doesn't seem to have an effect. alt: toDb(limitedSig) - toDb(normalizedSig);
-		real releaseCeil = 0;
+		real releaseCeil;
 		if (attackMs == 0) {
 			attenuationDb = min(desiredAttn, attenuationDb);
 			releaseCeil = desiredAttn;
@@ -87,30 +79,40 @@ final class Limiter {
 		else {
 			if (desiredAttn < attenuationDb) {
 				real attnTravel = desiredAttn - attenuationDb;
-				real attackedAttn = attenuationDb + attnTravel * min(1, msPassed / attackMs);
+				real attackedAttn = attenuationDb + attnTravel * min(1, timeLapse.msPassed / attackMs);
 				attenuationDb = min(attenuationDb, attackedAttn);
 				// attack done, store full attenuation so the level will be held
-				attnHold.put(now, attackedAttn);
+				attnHold.put(timeLapse.now, attackedAttn);
 			}
 			else {
-				attnHold.put(now, 0);
+				attnHold.put(timeLapse.now, 0);
 			}
 			releaseCeil = attnHold.minValue;
 		}
 
 		// release
 		if (desiredAttn > attenuationDb) {
-			real step = releasePerSecond * msPassed / 1000.0;
+			real step = releasePerSecond * timeLapse.msPassed / 1000.0;
 			attenuationDb = min(attenuationDb + step, releaseCeil);
 		}
 
 		limitedVolumeDb = unlimitedVolumeDb + attenuationDb;
-		lastProcess = now;
+	}
+
+	private:
+
+	float prevUnlimitedVolumeDb = 0;
+	void reduceAttenuationByNormalizerChange() {
+		real volumeChange = unlimitedVolumeDb - prevUnlimitedVolumeDb;
+		if (volumeChange < 0) {
+			attenuationDb = min(0, attenuationDb - volumeChange);
+		}
+		prevUnlimitedVolumeDb = unlimitedVolumeDb;
 	}
 
 	// soft knee function to compute desired output signal
 	// https://dsp.stackexchange.com/questions/73619/how-to-derive-equation-for-second-order-interpolation-of-soft-knee-cutoff-in-a-c
-	private real softKneeLimit(real signal) {
+	real softKneeLimit(real signal) {
 		if (limitW <= 0.0001) return signal; // avoid division by zero
 
 		static real sqr(real v) { return v*v; }

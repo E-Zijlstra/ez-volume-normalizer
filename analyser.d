@@ -5,18 +5,19 @@ import std.algorithm;
 
 import util;
 import lookback;
+import timelapse;
 
 final class Analyser {
 
-	// visual peak captures the peak level of the last 40ms for display purposes
+	// capture the peak level of the last 40ms for display purposes
 	private {
 		MaxLookback lookback;
-		enum lookbackMs = 60; // 40 = 25fps;
+		enum lookbackMs = 60; // 60 ms = 16.6 Hz
 		float mCurrentPeak = 0;
 		float mCurrentPeakDb = -100;
 
-		void storeVisualPeak(MonoTime now, float level) {
-			lookback.put(now, level);
+		void storeVisualPeak(ref const TimeLapse timeLapse, float level) {
+			lookback.put(timeLapse.now, level);
 			if (mCurrentPeak == lookback.maxValue) return;
 
 			mCurrentPeak = lookback.maxValue;
@@ -45,14 +46,13 @@ final class Analyser {
 	//private const(float) minLevel = 0.000562; // -65dB = 0.000562
 	private const(float) minLevel = 0.001; // -60dB = 0.001
 
-	bool processLevel(float level) {
-		auto now = MonoTime.currTime;
-		storeVisualPeak(now, level);
+	bool processLevel(ref const TimeLapse timeLapse, float level) {
+		storeVisualPeak(timeLapse, level);
 
 		if (level < minLevel) return false;
 
 		bool historyChanged = false;
-		historyChanged = levelHistory.add(now, level);
+		historyChanged = levelHistory.add(timeLapse.now, level);
 
 		if (historyChanged) {
 			levelFilter.classifySamples();

@@ -521,6 +521,7 @@
   <File path="psychoacoustics.d" />
   <File path="README.md" />
   <File path="streamlistener.d" />
+  <File path="timelapse.d" />
   <File path="util.d" />
   <File path="windows.d" />
   <File path="worker.d" />
