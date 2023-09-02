@@ -13,17 +13,16 @@ final class PsychoAcoustics {
 		bool _paramsChanged = true;
 	}
 
-	float lowGain = -2;
-	float highGain = 2;
-	float gainOffset = 0;
-	float lowLevel;
-	float highLevel;
-	float combinedLevel;
-	float adjustedLevel;
+	float lowGain = -8;
+	const gainOffset = 0;
+	const frequency = 1000;
 	float correction;
+	
+	// experimental determinated by checking correctionlevel with a sine tone at given frequency
+	const freqOffset = 300;
 
 	@property float perception() {
-		return (2f+correction) / 4f;
+		return (correction/-lowGain) + 1f;
 	}
 
 	this() {
@@ -43,19 +42,27 @@ final class PsychoAcoustics {
 
 	@property float time() { return _time; }
 
-	void process(float[] data) {
+	void process(float[] data, float rawDb) {
 		if (_paramsChanged) {
-			_splitter.setParams(900, _sampleRate, _time);
+			_splitter.setParams(frequency+freqOffset, _sampleRate, _time);
 			_paramsChanged = false;
 		}
 
 		_splitter.processStereo(data);
-		lowLevel = dataToPeak(_splitter.lowpass).toDb;
-		highLevel = dataToPeak(_splitter.highpass).toDb;
+		float lowLevel = dataToPeak(_splitter.lowpass).toDb;
+		float highLevel = dataToPeak(_splitter.highpass).toDb;
+		float combinedLevel = max(lowLevel, highLevel);
 
-		combinedLevel = max(lowLevel, highLevel);
-		adjustedLevel = max(lowLevel + lowGain, highLevel + highGain);
+		float adjustedLevel = max(lowLevel + lowGain, highLevel);
 		correction = adjustedLevel - combinedLevel + gainOffset;
+		version(disable) 
+			info("low: ", lowLevel,
+			 " high: ", highLevel,
+			 " adjusted: ", adjustedLevel,
+			 " correction: ", correction,
+			 " combined: ", combinedLevel,
+			 " rawDb: ", rawDb
+		);
 	}
 
 	float dataToPeak(float[] data) {
@@ -83,10 +90,11 @@ final class BandSplitter {
 	float[] highpass;
 
 	void setParams(float frequency, float sampleRate, float bufferSizeSeconds) {
+		const freqOverlap = 800;
 		_frequency = frequency;
 		_sampleRate = sampleRate;
-		_lpf.setParams(frequency, sampleRate);
-		_hpf.setParams(frequency, sampleRate);
+		_lpf.setParams(frequency+freqOverlap, sampleRate);
+		_hpf.setParams(frequency-freqOverlap, sampleRate);
 
 		size_t size = cast(size_t)(bufferSizeSeconds * _sampleRate);
 		lowpass.length = size;
@@ -215,6 +223,87 @@ struct HighPassFilter {
 	float _a0=0, _a1=0, _a2=0;
 	float _b1=0, _b2=0;
 	float _c0=1, _d0=0;
+
+	float _sampleRate;
+	float _frequency;
+}
+
+struct LowPassFilterOnePole {
+
+	void setParams(float frequency, float sampleRate) {
+		_frequency = frequency;
+		_sampleRate = sampleRate;
+		calcCoefficients();
+		reset();
+	}
+
+	void calcCoefficients() {
+        _thetac = 2 * PI * _frequency / _sampleRate;
+        _gamma = 2 - cos(_thetac);
+        _b1 = sqrt((_gamma * _gamma) - 1) - _gamma;
+        _a0 = 1 + _b1;
+    }
+
+	void reset() {
+        _yn1 = 0;
+	}
+
+	float process(float input) {
+		float output = _a0 * input - _b1 * _yn1;
+        _yn1 = input;
+        return output;
+	}
+
+    float _thetac;
+    float _gamma;
+
+	//Delay samples
+	float _yn1 = 0;
+
+	//Biquad Coeffecients
+	float _a0=0;
+	float _b1=0;
+
+	float _sampleRate;
+	float _frequency;
+}
+
+
+struct HighPassFilterOnePole {
+
+	void setParams(float frequency, float sampleRate) {
+		_frequency = frequency;
+		_sampleRate = sampleRate;
+		calcCoefficients();
+		reset();
+	}
+
+	void calcCoefficients() {
+        _thetac = 2 * PI * _frequency / _sampleRate;
+        _gamma = 2 + cos(_thetac);
+        _b1 = _gamma - sqrt((_gamma * _gamma) - 1);
+        _a0 = 1 - _b1;
+    }
+
+	void reset() {
+        _yn1 = 0;
+	}
+
+	float process(float input) {
+		float output = _a0 * input - _b1 * _yn1;
+        _yn1 = input;
+        return output;
+	}
+
+    float _thetac;
+    float _gamma;
+
+	//Delay samples
+	float _yn1 = 0;
+
+	//Biquad Coeffecients
+	float _a0=0;
+	float _b1=0;
 
 	float _sampleRate;
 	float _frequency;

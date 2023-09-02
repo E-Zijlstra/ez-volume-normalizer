@@ -1,4 +1,4 @@
-module vumeter;
+module ui.vumeter;
 
 import std.math;
 import std.algorithm;
@@ -6,10 +6,9 @@ import std.bitmanip;
 import std.stdio;
 
 import core.time;
-import gdkpixbuf.Pixbuf;
 
 import util;
-import vumeterbase;
+import ui.vumeterbase;
 
 class VuMeter : VuMeterBase {
 	bool enableRaster = true; // enables the raster like spacing between LEDs

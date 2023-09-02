@@ -1,7 +1,7 @@
 module main;
 
 import std.stdio;
-import VolumeNormalizer;
+import ui.VolumeNormalizer;
 
 // oncycle=ignore: if not ignored static constructors will trigger module dependency cycles
 extern(C) __gshared string[] rt_options = [ "oncycle=ignore", "testmode=run-main" ];

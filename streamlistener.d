@@ -178,10 +178,11 @@ struct StreamListener {
 		if (res != 0) return;
 
 		// Get the buffer size
-		uint bufferDuration;
-		audioClient.GetBufferSize(bufferDuration);
-		info("Got buffersize ", bufferDuration);
-		if (bufferDuration == 0) return;
+		uint bufferSize;
+		audioClient.GetBufferSize(bufferSize);
+		if (bufferSize == 0) return;
+		int bufferSizeMs = bufferSize * 1000 / sampleRate;
+		info("Got buffersize ", bufferSize, " ms: ", bufferSizeMs);
 
 		// Get a pointer to the audio capture client
 		IAudioCaptureClient captureClient;
@@ -204,19 +205,22 @@ struct StreamListener {
 		}
 
 		state = State.running;
+		int idles = 0;
 		while (state == State.running) {
 			// Get the next packet of data
 			uint numFramesAvailable = 0;
-			captureClient.GetNextPacketSize(numFramesAvailable);
-			if (numFramesAvailable == 0) {
-				if (!highQuality) Thread.sleep(usecs(1)); // Sleeping here is the optimal place. It stil may miss a few samples (<40/s) but that's better than having 20% cpu usage.
-				continue;
-			}
-
-			// Get a pointer to the data
 			BYTE* data;
 			DWORD pdwFlags; // buffer-status flags. The method writes either 0 or the bitwise-OR combination SILENT/DISCONTINUITY/TIMESTAMP_ERROR
-			captureClient.GetBuffer(data, numFramesAvailable, pdwFlags, null, null);
+			int code = captureClient.GetBuffer(data, numFramesAvailable, pdwFlags, null, null);
+			if (code != S_OK) {
+				// Sleeping here is the optimal place. One sleep appears to be 8ms minimal
+				if (!highQuality && (idles == 0 || idles > 10)) { // Only wait once or, to prevent cpu hogging after we have waited 10 times
+					Thread.sleep(msecs(1));
+				}
+				idles++;
+				continue;
+			}
+			idles = 0;
 
 			float[] fdata = (cast(float*) data)[0..numFramesAvailable * numChannels];
 			blockProcessor(fdata, numFramesAvailable);

@@ -1,24 +1,24 @@
-module timelapse;
+module timedelta;
 
 import std.datetime;
 
-struct TimeLapse {
+struct TimeDelta {
 	MonoTime now;
 	long msPassed;
 }
 
-struct TimeLapser {
+struct TimeDeltaFactory {
 	private MonoTime previousNow;
 
 	void reset() {
 		previousNow = MonoTime.currTime;
 	}
 
-	TimeLapse elapse() {
+	TimeDelta create() {
 		const now = MonoTime.currTime;
 		const msPassed = (now - previousNow).total!"msecs";
 		previousNow = now;
-		return TimeLapse(now, msPassed);
+		return TimeDelta(now, msPassed);
 	}
 }
 

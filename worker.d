@@ -96,15 +96,14 @@ class Worker {
 	const tickInterval = dur!"msecs"(1000/ticksPerSecond);
 
 	shared {
-		long  processedFrames;
 		float outputTargetDb = -30;
 		float actualVolumeDb;
 		bool mOverrideVolume = false;
 		float lowVolumeBoost = 1;
 	}
 
-	import timelapse;
-	private TimeLapser timeLapser;
+	import timedelta;
+	private TimeDeltaFactory timeDeltaFactory;
 
 	StreamListener stream;
 	Analyser analyser;
@@ -139,7 +138,7 @@ class Worker {
 		thread = new Thread(&run);
 		thread.start();
 
-		timeLapser.reset();
+		timeDeltaFactory.reset();
 		while(stream.state == State.starting) { }
 
 		volumeInterpolator.setMinVolumeDb(stream.minDb);
@@ -206,7 +205,7 @@ private:
 
 	void run() {
 		try {
-			//started = MonoTime.currTime;
+			resetDeltaExpectedProcessedSamples();
 			stream.loop(&processBlock);
 		}
 		catch(Throwable e) {
@@ -217,25 +216,51 @@ private:
 		info("Worker exited");
 	}
 
-	//ulong totalFrames;
-	//MonoTime started;
+	long samplesProcessed = 0;
+	MonoTime startProcessing;
+	public long deltaExpectedProcessedSamples;
+	public float deltaExpectedProcessedSamplesMin;
+	public float deltaExpectedProcessedSamplesMax;
 
+	void updateDeltaExpectedProcessedSamples(MonoTime now, uint numFramesAvailable) {
+		if (numFramesAvailable == 0) return;
+		if (startProcessing == MonoTime.zero) {
+			startProcessing = now;
+			return;
+		}
+		samplesProcessed += numFramesAvailable;
+		long expected = (now - startProcessing).total!"msecs" * stream.sampleRate / 1000;
+		deltaExpectedProcessedSamples = samplesProcessed - expected;
+		deltaExpectedProcessedSamplesMin += abs(deltaExpectedProcessedSamplesMin / 4000f);
+		deltaExpectedProcessedSamplesMax -= abs(deltaExpectedProcessedSamplesMax / 4000f);
+		float dps = deltaExpectedProcessedSamples;
+		deltaExpectedProcessedSamplesMin = min(deltaExpectedProcessedSamplesMin, dps);
+		deltaExpectedProcessedSamplesMax = max(deltaExpectedProcessedSamplesMax, dps);
+	}
+	void resetDeltaExpectedProcessedSamples() {
+		startProcessing = MonoTime.zero;
+		samplesProcessed = 0;
+		deltaExpectedProcessedSamples = 0;
+		deltaExpectedProcessedSamplesMin = 10000;
+		deltaExpectedProcessedSamplesMax = -10000;
+	}
+
+
+	// about 10ms of data (480 frames), data is processed within 1ms
 	void processBlock(float[] data, uint numFramesAvailable) {
-		//totalFrames += numFramesAvailable;
-		//float runningTime = (MonoTime.currTime - started).total!"msecs" / 1000f;
-		//if (runningTime > 0) info(cast(int)(totalFrames / runningTime)); // about 10ms of data
-
-		TimeLapse lapse = timeLapser.elapse();
+		TimeDelta timeDelta = timeDeltaFactory.create();
+		updateDeltaExpectedProcessedSamples(timeDelta.now, numFramesAvailable);
 		float pk = floatDataToPeak(data);
+		float pkBeforeCorrection = pk;
 		if (psychoAcousticsEnabled) {
-			psychoAcoustics.process(data);
-			float accousticCorrection = psychoAcoustics.correction.toLinear;
-			pk *= accousticCorrection;
+			psychoAcoustics.process(data, pk.toDb);
+			float accousticCorrectionFactor = psychoAcoustics.correction.toLinear;
+			pk *= accousticCorrectionFactor;
 		}
 
-		bool loudnessChanged = analyser.processLevel(lapse, pk);
+		bool loudnessChanged = analyser.processLevel(timeDelta, pk, pkBeforeCorrection);
 
-		bool ticked = tick(lapse);
+		bool ticked = tick(timeDelta);
 		if (ticked && !mOverrideVolume) {
 			setVolumeFromAnalyser();
 			volumeInterpolator.tick(1f/ticksPerSecond);
@@ -244,7 +269,7 @@ private:
 		synchronized(mLimiter) {
 			Limiter limiter = cast(Limiter)(mLimiter);
 			limiter.setCurrentVolume(volumeInterpolator.volume, volumeInterpolator.volumeDb);
-			limiter.process(lapse, pk);
+			limiter.process(timeDelta, pk);
 		}
 		
 		setEndpointVolume();
@@ -252,7 +277,8 @@ private:
 			actualVolumeDb = stream.getVolumeDb();
 		}
 		
-		processedFrames = processedFrames + numFramesAvailable;
+		//auto processMs = (timeDelta.now - MonoTime.currTime).total!"usecs";
+		//info(processMs);
 	}
 
 	float floatDataToPeak(float[] data) {
@@ -270,9 +296,9 @@ private:
 	}
 
 	MonoTime lastTickExecuted;
-	bool tick(ref const TimeLapse timeLapse) {
-		if (timeLapse.now - lastTickExecuted < tickInterval) return false;
-		lastTickExecuted = timeLapse.now;
+	bool tick(ref const TimeDelta timeDelta) {
+		if (timeDelta.now - lastTickExecuted < tickInterval) return false;
+		lastTickExecuted = timeDelta.now;
 		return true;
 	}
 

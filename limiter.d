@@ -9,7 +9,7 @@ import util;
 
 import core.time;
 import lookback;
-import timelapse;
+import timedelta;
 
 // https://dsp.stackexchange.com/questions/73619/how-to-derive-equation-for-second-order-interpolation-of-soft-knee-cutoff-in-a-c
 final class Limiter {
@@ -52,7 +52,7 @@ final class Limiter {
 	}
 
 
-	void process(ref const TimeLapse timeLapse, float inputSignal) {
+	void process(ref const TimeDelta timeDelta, float inputSignal) {
 
 		if (!enabled) {
 			limitedVolumeDb = unlimitedVolumeDb;
@@ -60,7 +60,7 @@ final class Limiter {
 			return;
 		}
 
-		hold.put(timeLapse.now, inputSignal);
+		hold.put(timeDelta.now, inputSignal);
 		float peak = (attackMs > 0 || hold.totalMs == 0) ?
 			inputSignal
 		:
@@ -79,20 +79,20 @@ final class Limiter {
 		else {
 			if (desiredAttn < attenuationDb) {
 				real attnTravel = desiredAttn - attenuationDb;
-				real attackedAttn = attenuationDb + attnTravel * min(1, timeLapse.msPassed / attackMs);
+				real attackedAttn = attenuationDb + attnTravel * min(1, timeDelta.msPassed / attackMs);
 				attenuationDb = min(attenuationDb, attackedAttn);
 				// attack done, store full attenuation so the level will be held
-				attnHold.put(timeLapse.now, attackedAttn);
+				attnHold.put(timeDelta.now, attackedAttn);
 			}
 			else {
-				attnHold.put(timeLapse.now, 0);
+				attnHold.put(timeDelta.now, 0);
 			}
 			releaseCeil = attnHold.minValue;
 		}
 
 		// release
 		if (desiredAttn > attenuationDb) {
-			real step = releasePerSecond * timeLapse.msPassed / 1000.0;
+			real step = releasePerSecond * timeDelta.msPassed / 1000.0;
 			attenuationDb = min(attenuationDb + step, releaseCeil);
 		}
 

@@ -1,40 +1,19 @@
-module VolumeNormalizer;
+module ui.VolumeNormalizer;
 
 import std.stdio;
 import std.conv;
 import core.time;
 import std.algorithm;
 
-import gdk.Threads;
-import gtk.MainWindow;
-import gtk.Label;
-import gtk.LevelBar;
-import gtk.Box;
-import gtk.Button;
-import gtk.Main;
-import gtk.Switch;
-import gtk.Range;
-import gtk.Scale;
-import gtk.Entry;
-import gtk.SpinButton;
-import gtk.CssProvider;
-import gtk.StyleContext;
-import gtk.Frame;
-import gtk.HSeparator;
-import gtk.Image;
-import gtk.CheckButton;
-import gtk.ComboBoxText;
-import gtk.Menu;
-import gtk.MenuItem;
+import ui.helpers;
 
 import util;
 import worker;
-import vumeter;
-import analysergraph;
+import ui.vumeter;
+import ui.analysergraph;
 import streamlistener;
-import settings;
+import ui.settings;
 
-import core.sys.windows.windows;
 import std.string;
 
 class UI {
@@ -58,9 +37,7 @@ class UI {
 	ComboBoxText uiSettings;
 	CurveCorrection uiCurveCorrection;
 
-	CheckButton uiEnableBassCorrection;
-	LevelBar uiBassCorrection;
-	SpinButton uiBassCorrectionTime;
+	debug PsychoAccoustics uiPsychoAcoustics;
 
 	Image   uiSignalVuImg;
 	VuMeter uiSignalVu;
@@ -85,34 +62,14 @@ class UI {
 	Label uiMasterDecibel;
 	Scale uiMasterVolume;
 
-	Menu volumePopup;
+	ContextMenu uiContextMenu;
+	Stats uiStats;
 
 	Worker worker;
 	StreamEndpoint[] endpoints;
 
 	bool wasRunning = true;
 	bool volumeSliderInDb = false;
-
-	const levelCss = "
-		levelbar block.full {
-		background-color: red;
-		border-style: solid;
-		border-color: black;
-		border-width: 1px;
-		}
-		levelbar block.high {
-		background-color: lime;
-		border-style: solid;
-		border-color: black;
-		border-width: 1px;
-		}
-		levelbar block.low {
-		background-color: lime;
-		border-style: solid;
-		border-color: black;
-		border-width: 1px;
-		}
-		";
 
 	const limiterCss = "
 		levelbar block.filled {
@@ -125,7 +82,7 @@ class UI {
 		endpoints = worker.stream.getEndpoints();
 		win = new MainWindow("EZ Volume Normalizer 0.7.2  -  github.com/E-Zijlstra/ez-volume-normalizer");
 		win.setDefaultSize(630, 300);
-		win.modifyFont("Carlito", 9);
+		win.modifyFont("Calibri", 8);
 
 		Box mainVsplit = new Box(GtkOrientation.VERTICAL, 0);
 		win.add(mainVsplit);
@@ -173,35 +130,7 @@ class UI {
 			}
 		}
 
-		{
-			Box frame = topRow.addFrame("low frequency boost").addHButtonBox();
-			frame.setSizeRequest(200,0);
-			uiBassCorrection = levelMeter(5, false, false);
-			uiBassCorrection.setInverted(true);
-			uiBassCorrection.setMinValue(0);
-			uiBassCorrection.setMaxValue(1);
-			uiBassCorrection.setMarginTop(0);
-			uiBassCorrection.setMarginBottom(0);
-			uiBassCorrection.setVexpand(true);
-			uiBassCorrection.setValue(0.5);
-			uiBassCorrection.addOffsetValue(GTK_LEVEL_BAR_OFFSET_LOW, 0.0);
-			uiBassCorrection.addOffsetValue(GTK_LEVEL_BAR_OFFSET_HIGH, 0.5);
-			uiBassCorrection.addOffsetValue(GTK_LEVEL_BAR_OFFSET_FULL, 1);
-			uiBassCorrection.addStyle(levelCss);
-			uiEnableBassCorrection = wrapTopLabel(frame, "active", new CheckButton(""));
-			uiEnableBassCorrection.addOnToggled( (btn) {
-				worker.psychoAcousticsEnabled = btn.getActive();
-				worker.stream.highQuality = btn.getActive();
-				uiBassCorrection.setValue(0.5);
-			});
-			uiBassCorrectionTime = wrapTopLabel(frame, "time (ms)", new SpinButton(50, 1000, 10));
-			uiBassCorrectionTime.setValue(worker.psychoAcoustics.time*1000.0);
-			uiBassCorrectionTime.addOnValueChanged((SpinButton btn) {
-				worker.psychoAcoustics.setTime(btn.getValue()/1000.0);
-			});
-
-			frame.add(uiBassCorrection);
-		}
+		debug uiPsychoAcoustics = new PsychoAccoustics(this, topRow);
 
 
 		{	// vu meters
@@ -227,14 +156,15 @@ class UI {
 			analyserGraph = new AnalyserGraph(vleftWidth - 38, 60, worker.analyser);
 
 			Box hbox = addHButtonBox(frame);
-			hbox.add(uiEnableNormalizer = new CheckButton("active", (CheckButton b){ worker.setOverride(!b.getActive());} ));
+			uiEnableNormalizer = hbox.withTopLabel("active", new CheckButton("", (CheckButton b){ worker.setOverride(!b.getActive());} ));
 
-			hbox.add(new Label("down delay\n(seconds):"));
-			hbox.add(uiAvgLength = new SpinButton(1, 30, 1));
+			uiAvgLength = new SpinButton(1, 30, 1);
+			hbox.withTopLabel("selector (s)", uiAvgLength, "Increase to ignore quiet parts");
 			uiAvgLength.setMarginRight(15);
-			hbox.add(new Label("slowness\n(bars x5):"));
-			hbox.add(uiNumLoudnessBars = new SpinButton(1, 30, 1));
 			uiAvgLength.addOnValueChanged((SpinButton e) { worker.analyser.setAverageLength(cast(int)e.getValue()); });
+
+			uiNumLoudnessBars = new SpinButton(1, 30, 1);
+			hbox.withTopLabel("stability (s)", uiNumLoudnessBars, "Decrease to converge more quickly");
 			uiNumLoudnessBars.addOnValueChanged((SpinButton e) { worker.analyser.setNumLoudnessBars(cast(int)e.getValue()); });
 		}
 
@@ -248,18 +178,18 @@ class UI {
 			uiLimiterAttn.setMarginTop(0);
 			Box hbox0 = new Box(GtkOrientation.HORIZONTAL, 0);
 			frame.add(hbox0);
-			uiEnableLimiter = wrapTopLabel(hbox0, "active", new CheckButton(null, (CheckButton b){ worker.mLimiter.enabled = b.getActive();} ));
+			uiEnableLimiter = withTopLabel(hbox0, "active", new CheckButton(null, (CheckButton b){ worker.mLimiter.enabled = b.getActive();} ));
 
 			Box vbox = new Box(GtkOrientation.VERTICAL, 0);
 			hbox0.add(vbox);
 			Box hbox1 = addHButtonBox(vbox);
 			Box hbox2 = addHButtonBox(vbox);
 
-			uiLimiterStart = wrapTopLabel(hbox1, "start offset (dB)", new SpinButton(-24, 24, 0.1));
-			uiLimiterWidth = wrapTopLabel(hbox1, "width (dB)", new SpinButton(0.1, 24, 0.1));
-			uiLimiterAttack = wrapTopLabel(hbox1, "attack (ms)", new SpinButton(0, 500, 5));
-			uiLimiterHold = wrapTopLabel(hbox1, "hold (ms)", new SpinButton(0, 10000, 10));
-			uiLimiterRelease = wrapTopLabel(hbox1, "release (dB/s)", new SpinButton(0.5, 80, 0.25));
+			uiLimiterStart = withTopLabel(hbox1, "start offset (dB)", new SpinButton(-24, 24, 0.1));
+			uiLimiterWidth = withTopLabel(hbox1, "width (dB)", new SpinButton(0.1, 24, 0.1));
+			uiLimiterAttack = withTopLabel(hbox1, "attack (ms)", new SpinButton(0, 500, 5));
+			uiLimiterHold = withTopLabel(hbox1, "hold (ms)", new SpinButton(0, 10000, 10));
+			uiLimiterRelease = withTopLabel(hbox1, "release (dB/s)", new SpinButton(0.5, 80, 0.25));
 
 			uiLimiterStart.addOnValueChanged( (SpinButton e) { setLimiterParameters(); } );
 			uiLimiterWidth.addOnValueChanged( (SpinButton e) { setLimiterParameters(); } );
@@ -285,14 +215,6 @@ class UI {
 			uiMasterVolume.setInverted(true);
 			uiMasterVolume.setDrawValue(true);
 			uiMasterVolume.addOnValueChanged(&volumeSliderChanged);
-			//uiMasterVolume.addOnButtonPress( (GdkEventButton* b, Widget) {
-			//    if(b.button == 3) {
-			//        volumePopup.showAll();
-			//        volumePopup.popupAtPointer(null);
-			//        return true;
-			//    }
-			//    return false;
-			//} );
 		}
 
 		gdk.Threads.threadsAddTimeout(15, &idle, cast(void*)(this));
@@ -305,7 +227,12 @@ class UI {
 		uiEnableLimiter.setActive(true);
 		uiEnableNormalizer.setActive(true);
 
+		uiContextMenu = new ContextMenu(this, win);
+		uiStats = new Stats(this);
+
 		displayProcessing();
+
+
 	}
 
 
@@ -367,15 +294,12 @@ class UI {
 		showLimiterMarks();
 	}
 
-	MonoTime processingStartedAt;
 
 	bool onEnable(bool state, Switch sw) {
 		if (state && worker.state == Worker.State.stopped) {
 			// switch on
 			//worker = new Worker(); problem is that analyserGraph etc still has references to old worker.
 			worker.setOutputTargetDb(outputTarget);
-			processingStartedAt = MonoTime.currTime;
-			worker.processedFrames = 0;
 			worker.start();
 		}
 		else if (worker && worker.state == Worker.State.running) {
@@ -426,8 +350,6 @@ class UI {
 	uint analyserUpdateTicks =99;
 
 	void displayProcessing() {
-		import std.math.exponential;
-
 		uiMasterDecibel.setLabel(format("%06.2f dB", worker.actualVolumeDb));
 
 		// input
@@ -455,9 +377,9 @@ class UI {
 		autoSetVolume = worker.volumeInterpolator.volumeDb;
 		uiMasterVolume.setValue(autoSetVolume);
 
-		// psycho acoustics
-		if (uiEnableBassCorrection.getActive())
-			uiBassCorrection.setValue(worker.psychoAcoustics.perception);
+		// other
+		debug uiPsychoAcoustics.updateDisplay();
+		uiStats.updateDisplay();
 	}
 
 
@@ -530,92 +452,13 @@ class UI {
 
 }
 
-private LevelBar levelMeter(int thickness=5, bool cols=false, bool horizontal = true) {
-	auto lb = new LevelBar();
-
-	if (horizontal)
-		lb.setProperty("height-request", thickness);
-	else {
-		lb.setProperty("width-request", thickness);
-		lb.setOrientation(GtkOrientation.VERTICAL);
-		lb.setInverted(true);
-	}
-	
-	lb.setProperty("margin-left", 10);
-	lb.setProperty("margin-right", 10);
-
-	if (!cols) {
-		lb.removeOffsetValue(GTK_LEVEL_BAR_OFFSET_LOW);
-		lb.removeOffsetValue(GTK_LEVEL_BAR_OFFSET_HIGH);
-		lb.removeOffsetValue(GTK_LEVEL_BAR_OFFSET_FULL);
-	}
-
-	return lb;
-}
-
-private void addStyle(W)(W bar, string style) {
-	auto css_provider = new CssProvider();
-	css_provider.loadFromData(style);
-	bar.getStyleContext().addProvider(css_provider, gtk.c.types.STYLE_PROVIDER_PRIORITY_USER);
-}
-import gtk.Window;
-import gdk.Display;
-import gdk.Screen;
-
-private void addGlobalStyle(Window bar, string style) {
-	auto css_provider = new CssProvider();
-	css_provider.loadFromData(style);
-	Display display = bar.getDisplay();
-	Screen screen = display.getDefaultScreen();
-	bar.getStyleContext().addProviderForScreen(screen, css_provider, gtk.c.types.STYLE_PROVIDER_PRIORITY_USER);
-}
-
-private Box addFrame(Box parent, string title) {
-	Frame frame = new Frame(title);
-	frame.setMarginTop(5);
-	frame.setMarginBottom(5);
-	frame.setMarginLeft(5);
-	frame.setMarginRight(5);
-	frame.setLabelAlign(0.05, 0.5);
-
-	parent.add(frame);
-	auto vbox = new Box(GtkOrientation.VERTICAL, 0);
-	vbox.setMarginTop(4);
-	vbox.setMarginBottom(5);
-	frame.add(vbox);
-	return vbox;
-}
-
-import gtk.Widget;
-import gtk.Container;
-private Box addHButtonBox(Container parent) {
-	Box hbox = new Box(GtkOrientation.HORIZONTAL, 5);
-	parent.add(hbox);
-	hbox.setMarginLeft(10);
-	hbox.setMarginRight(10);
-	hbox.setMarginTop(1);
-	hbox.setMarginBottom(1);
-	return hbox;
-}
-
-private W wrapTopLabel(P, W: Widget )(P parent, string label, W widget) {
-	auto b = new Box(GtkOrientation.VERTICAL, 0);
-	b.add(new Label(label));
-	b.add(widget);
-	widget.setHalign(GtkAlign.CENTER);
-	widget.setValign(GtkAlign.CENTER);
-	widget.setVexpand(true);
-	parent.add(b);
-	return widget;
-}
-
 
 class CurveCorrection : ComboBoxText {
 	private {
 		UI vn;
 	}
 
-	this(UI vn_, Container cont) {
+	this(UI vn_, Container parent) {
 		vn = vn_;
 
 		super(false);
@@ -630,13 +473,158 @@ class CurveCorrection : ComboBoxText {
 		appendText("0.90");
 		setTooltipText("Curve correction");
 		addOnChanged(&onChanged);
-		cont.add(this);
+		parent.add(this);
 		setActive(6);
 	}
 
 	void onChanged(ComboBoxText ct) {
 		vn.worker.lowVolumeBoost = ct.getActiveText().to!float;
 		vn.worker.setVolumeDb(vn.worker.volumeInterpolator.volumeDb-0.1); // trigger
+	}
+}
+
+class PsychoAccoustics {
+	private {
+		UI vn;
+		CheckButton uiEnable;
+		LevelBar uiAdjustmentLevel;
+		SpinButton uiTime;
+
+		const levelCss = "
+			levelbar block.full {
+			background-color: red;
+			border-style: solid;
+			border-color: black;
+			border-width: 1px;
+			}
+			levelbar block.high {
+			background-color: lime;
+			border-style: solid;
+			border-color: black;
+			border-width: 1px;
+			}
+			levelbar block.low {
+			background-color: lime;
+			border-style: solid;
+			border-color: black;
+			border-width: 1px;
+			}
+			";
+	}
+
+	@property bool enabled() { return uiEnable.getActive(); }
+	@property Worker worker() { return vn.worker; }
+
+	void updateDisplay() {
+		if (!enabled) return;
+
+		float perception = worker.psychoAcoustics.perception;
+		uiAdjustmentLevel.setValue(perception);
+	}
+
+	this(UI vn_, Box parent) {
+		vn = vn_;
+
+		Box frame = parent.addFrame("low frequency boost").addHButtonBox();
+		frame.setSizeRequest(200,0);
+		uiAdjustmentLevel = levelMeter(5, false, false);
+		uiAdjustmentLevel.setInverted(true);
+		uiAdjustmentLevel.setMinValue(0);
+		uiAdjustmentLevel.setMaxValue(1);
+		uiAdjustmentLevel.setMarginTop(0);
+		uiAdjustmentLevel.setMarginBottom(0);
+		uiAdjustmentLevel.setVexpand(true);
+		uiAdjustmentLevel.setValue(0.5);
+		uiAdjustmentLevel.addOffsetValue(GTK_LEVEL_BAR_OFFSET_LOW, 0.0);
+		uiAdjustmentLevel.addOffsetValue(GTK_LEVEL_BAR_OFFSET_HIGH, 0.5);
+		uiAdjustmentLevel.addOffsetValue(GTK_LEVEL_BAR_OFFSET_FULL, 1);
+		uiAdjustmentLevel.addStyle(levelCss);
+		uiEnable = withTopLabel(frame, "active", new CheckButton(""));
+		uiEnable.addOnToggled( (btn) {
+			worker.psychoAcousticsEnabled = btn.getActive();
+			worker.stream.highQuality = btn.getActive();
+			uiAdjustmentLevel.setValue(0.5);
+		});
+		uiTime = withTopLabel(frame, "window (ms)", new SpinButton(50, 1000, 10));
+		uiTime.addOnValueChanged((SpinButton btn) {
+			worker.psychoAcoustics.setTime(btn.getValue()/1000.0);
+		});
+		uiTime.setValue(300f);
+
+		frame.add(uiAdjustmentLevel);
+	}
+}
+
+import gtk.CheckMenuItem;
+class ContextMenu
+{
+	Menu menu;
+	CheckMenuItem highQuality;
+	UI vn;
+
+	this(UI vn_, Window parent) {
+		vn = vn_;
+
+		menu = new Menu();
+		MenuItem stats = new MenuItem("Stats") ;
+		menu.append(stats);
+		stats.addOnActivate( (MenuItem) => vn.uiStats.open() );
+
+		highQuality = new CheckMenuItem("High Quality");
+		highQuality.setActive(vn.worker.stream.highQuality);
+		menu.append(highQuality);
+		highQuality.addOnActivate( (MenuItem) {
+			vn.worker.stream.highQuality = highQuality.getActive();
+		});
+
+		parent.addOnButtonPress( (GdkEventButton* b, Widget) {
+			if(b.button == 3) {
+				highQuality.setActive(vn.worker.stream.highQuality);
+				menu.showAll();
+				menu.popupAtPointer(null);
+				return true;
+			}
+			else
+				return false;
+			}
+		);
+	}
+}
+
+class Stats {
+	Window window;
+	Label samplesPerSecond;
+	int correction;
+	UI vn;
+
+	this(UI vn_) {
+		vn = vn_;
+	}
+
+	void open() {
+		if (window) return;
+
+		window = new Window("device stats");
+		Box vbox = new Box(GtkOrientation.VERTICAL, 5);
+		window.add(vbox);
+		vbox.add(samplesPerSecond = new Label("nothing here yet"));
+		window.showAll();
+		window.addOnDestroy( (Widget w) { window = null; });
+	}
+
+	void updateDisplay() {
+		if (!window) return;
+		int jmin = cast(int)vn.worker.deltaExpectedProcessedSamplesMin;
+		int jmax = cast(int)vn.worker.deltaExpectedProcessedSamplesMax;
+		int total = jmax - jmin + correction;
+		if (total > 0) correction -= 1 + total/256;
+		if (total < 0) correction += 1 - total/256;
+
+		samplesPerSecond.setLabel("missed frames: " ~
+								  total.tos  ~
+								  " (" ~ (jmax-jmin).tos ~ ") " ~
+								  " [" ~ jmin.tos ~ " ... " ~
+								  jmax.tos ~ "]");
 	}
 
 }

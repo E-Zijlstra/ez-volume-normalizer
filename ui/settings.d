@@ -1,4 +1,4 @@
-module settings;
+module ui.settings;
 
 struct Settings {
 	string name;
@@ -12,7 +12,7 @@ struct Settings {
 
 	static const Settings generic = Settings(
 		"Generic",
-		15, 15,
+		12, 12,
 		1.2, 2.0,
 		0,
 		1000, 6
@@ -20,10 +20,10 @@ struct Settings {
 
 	static const Settings movie = Settings(
 		"Movie",
-		8, 8,
+		7, 8,
 		1.4, 2.1,
 		0,
-		1500, 1
+		1200, 1
 	);
 
 	static const Settings conference = Settings(
@@ -31,7 +31,7 @@ struct Settings {
 		20, 10,
 		-8.0, 1.3,
 		200,
-		1300, 3
+		800, 3
 	);
 
 	static const Settings conference2 = Settings(

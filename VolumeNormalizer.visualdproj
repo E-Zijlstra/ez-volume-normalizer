@@ -109,7 +109,7 @@
   <mixinPath>$(IntDir)\$(SafeProjectName).mixin</mixinPath>
   <objfiles />
   <linkswitches />
-  <libfiles>C:\D\dmd-2.100.2\windows\lib64\gtkd.lib C:\D\dmd-2.100.2\windows\lib64\gtkdsv.lib;C:\D\dmd-2.100.2\windows\lib64\mingw\ole32.lib</libfiles>
+  <libfiles>C:\D\lib64\gtkd.lib;C:\D\lib64\gtkdsv.lib;C:\D\dmd-2.100.2\windows\lib64\mingw\ole32.lib</libfiles>
   <libpaths />
   <deffile />
   <resfile />
@@ -234,7 +234,7 @@
   <mixinPath>$(IntDir)\$(SafeProjectName).mixin</mixinPath>
   <objfiles />
   <linkswitches />
-  <libfiles>C:\D\dmd-2.100.2\windows\lib64\gtkd.lib C:\D\dmd-2.100.2\windows\lib64\gtkdsv.lib;C:\D\dmd-2.100.2\windows\lib64\mingw\ole32.lib</libfiles>
+  <libfiles>C:\D\lib64\gtkd.lib C:\D\lib64\gtkdsv.lib;C:\D\dmd-2.100.2\windows\lib64\mingw\ole32.lib</libfiles>
   <libpaths />
   <deffile />
   <resfile />
@@ -507,6 +507,7 @@
   </Folder>
   <Folder name="ui">
    <File path="ui\analysergraph.d" />
+   <File path="ui\helpers.d" />
    <File path="ui\settings.d" />
    <File path="ui\VolumeNormalizer.d" />
    <File path="ui\vumeter.d" />
@@ -521,7 +522,7 @@
   <File path="psychoacoustics.d" />
   <File path="README.md" />
   <File path="streamlistener.d" />
-  <File path="timelapse.d" />
+  <File path="timedelta.d" />
   <File path="util.d" />
   <File path="windows.d" />
   <File path="worker.d" />

@@ -1,4 +1,4 @@
-module vumeterbase;
+module ui.vumeterbase;
 
 import std.math;
 
@@ -49,25 +49,23 @@ final:
 		}
 	}
 
-	void paintVerticalLine(int x, int height, RGBA barColor, RGBA accentColor) {
+	void paintVerticalLine(int x, int y0, int y1, RGBA rgba_) {
+		assert(y1 >= y0);
+		int height = y1 - y0 +1;
 		if (height <= 0) return;
 
-		uint barRgba = barColor.toUint;
-		uint accentRgba = accentColor.toUint;
+		uint rgba = rgba_.toUint;
 	   	int stride = mPixbuf.getRowstride() / 4;
-		char[] cdata = mPixbuf.getPixelsWithLength();
-		uint[] data = cast(uint[]) cdata;
+		uint[] data = cast(uint[]) mPixbuf.getPixelsWithLength();
 
-		int idx = (mHeight - height) * stride + x;
+		int idx = (mHeight - y1 - 1) * stride + x;
 
-		data[idx] = accentRgba;
-		idx += stride;
-
-		foreach(y_; 1..height) {
-  			data[idx] = barRgba;
+		foreach(y_; 0..height) {
+  			data[idx] = rgba;
 			idx += stride;
 		}
 	}
+
 
 	void paintPixel(int x, int y, RGBA color) {
 		y = mHeightMinusOne - y;

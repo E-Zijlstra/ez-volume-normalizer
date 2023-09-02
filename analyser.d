@@ -5,7 +5,7 @@ import std.algorithm;
 
 import util;
 import lookback;
-import timelapse;
+import timedelta;
 
 final class Analyser {
 
@@ -16,7 +16,7 @@ final class Analyser {
 		float mCurrentPeak = 0;
 		float mCurrentPeakDb = -100;
 
-		void storeVisualPeak(ref const TimeLapse timeLapse, float level) {
+		void storeVisualPeak(ref const TimeDelta timeLapse, float level) {
 			lookback.put(timeLapse.now, level);
 			if (mCurrentPeak == lookback.maxValue) return;
 
@@ -46,13 +46,13 @@ final class Analyser {
 	//private const(float) minLevel = 0.000562; // -65dB = 0.000562
 	private const(float) minLevel = 0.001; // -60dB = 0.001
 
-	bool processLevel(ref const TimeLapse timeLapse, float level) {
+	bool processLevel(ref const TimeDelta timeLapse, float level, float uncorrectedLevel) {
 		storeVisualPeak(timeLapse, level);
 
 		if (level < minLevel) return false;
 
 		bool historyChanged = false;
-		historyChanged = levelHistory.add(timeLapse.now, level);
+		historyChanged = levelHistory.add(timeLapse.now, level, uncorrectedLevel);
 
 		if (historyChanged) {
 			levelFilter.classifySamples();
@@ -94,6 +94,7 @@ final class Analyser {
 
 class LevelHistory {
 	float[] samples;
+	float[] samplesUncorrected;
 
 	@property int writeIdx() {
 		return samplesIdx;
@@ -112,24 +113,30 @@ private:
 	Duration sampleDuration;
 	MonoTime nextSampleTime;
 	float accumulator = 0f;
+	float accumulatorUncorrected = 0f;
 
 
 public:
 	this(int numSamples, Duration sampleDuration_) {
 		samples.length = numSamples;
+		samplesUncorrected.length = numSamples;
 		sampleDuration = sampleDuration_;
 		nextSampleTime = MonoTime.currTime;
 		foreach(ref h; samples) h = 0f;
+		foreach(ref h; samplesUncorrected) h = 0f;
 	}
 
-	bool add(MonoTime now, float level) {
+	bool add(MonoTime now, float level, float levelUncorrected) {
 		accumulator = max(accumulator, level);
+		accumulatorUncorrected = max(accumulatorUncorrected, levelUncorrected);
 
 		// archive the accumulator
 		bool historyChanged = now > nextSampleTime;
 		if (historyChanged) {
 			samples[samplesIdx] = accumulator;
+			samplesUncorrected[samplesIdx] = accumulatorUncorrected;
 			accumulator = 0f;
+			accumulatorUncorrected = 0f;
 			nextSampleTime = now + sampleDuration;
 
 			samplesIdx++;
