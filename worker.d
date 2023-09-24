@@ -305,7 +305,7 @@ private:
 	// --
 
 
-	private float previousEndpointVolume = 1;
+	float previousEndpointVolume = 1;
 	
 	// resolution of endpoint is typically 0.4db
 	void setEndpointVolume() {
@@ -315,13 +315,12 @@ private:
 		float db = min(volumeInterpolator.volumeDb, mLimiter.limitedVolumeDb);
 		db = quantize(db, 0.1f);
 		if (db == previousEndpointVolume) return;
-
 		previousEndpointVolume = db;
-		if (lowVolumeBoost != 1) {
-			float db0 = db;
-			db = -pow(-db, 1.0/lowVolumeBoost);
-			//info(db0, " -> ", db);
-		}
+		setEndpointVolumeForced();
+	}
+
+	public void setEndpointVolumeForced() {
+		float db = previousEndpointVolume * lowVolumeBoost;
 		stream.setVolumeDb(db);
 	}
 }

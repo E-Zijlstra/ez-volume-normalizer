@@ -462,24 +462,24 @@ class CurveCorrection : ComboBoxText {
 		vn = vn_;
 
 		super(false);
-		appendText("1.6");
-		appendText("1.5");
-		appendText("1.4");
-		appendText("1.3");
-		appendText("1.2");
-		appendText("1.1");
-		appendText("1.0");
-		appendText("0.95");
-		appendText("0.90");
-		setTooltipText("Curve correction");
+		appendText(" 00 %");
+		appendText(" 30 %");
+		appendText(" 60 %");
+		appendText("100 %");
+		appendText("150 %"); 
+		appendText("220 %");
+		appendText("300 %");
+		setTooltipText("Volume slider curve. Boosts lower levels. (% at -20dB)");
 		addOnChanged(&onChanged);
 		parent.add(this);
-		setActive(6);
+		setActive(0);
 	}
 
+	const float[] dbMultipliers = [1.0, 0.888, 0.8, 0.7, 0.6, 0.5, 0.4];
+
 	void onChanged(ComboBoxText ct) {
-		vn.worker.lowVolumeBoost = ct.getActiveText().to!float;
-		vn.worker.setVolumeDb(vn.worker.volumeInterpolator.volumeDb-0.1); // trigger
+		vn.worker.lowVolumeBoost = dbMultipliers[ct.getActive()].to!float;
+		vn.worker.setEndpointVolumeForced();
 	}
 }
 

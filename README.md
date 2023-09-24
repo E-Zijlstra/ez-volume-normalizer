@@ -20,8 +20,6 @@ Use at your own risk.
 # Changelog
 v0.7.2
  - Fixed curve correction. 0.7.1 broke it.
- - Added experimental psycho acoustics. High frequencies (> 850Hz) are measured 4 dB louder than lower frequencies.
-   This will significantly increase cpu usage because the filters must not miss a single sample.
 
 v0.7.1
  - Fixed limiter overshooting when using attack.
@@ -40,8 +38,7 @@ V0.7
 - Power on/off
 - Soundcard selection
 - Device info and volume reported by the device
-- Curve correction: Some devices don't have a correct volume curve and produce higher/lower levels than as instructed. Try different values if you notice this. 1.3 works well on my Dell laptop.
-  How to test: Disable normalizer, set target to -45, hold to 180ms, release to 20, set volume to max. Play something loud that has a quick drop in volume but not completly silent. At first the limiter should be engaged quite a bit. When the drop happens the limiter releases and if you have the correct setting you won't hear a difference in volume.
+- Volume slider curve: Makes the volume slider curve a bit flatter by boosting lower levels. Can be used to preserve some of the original dynamics.
 - Presets
 
 ### Level meters
