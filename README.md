@@ -20,6 +20,7 @@ Use at your own risk.
 # Changelog
 v0.7.2
  - Fixed curve correction. 0.7.1 broke it.
+ - Fix cpu load on idle
 
 v0.7.1
  - Fixed limiter overshooting when using attack.

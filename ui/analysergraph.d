@@ -27,8 +27,9 @@ class AnalyserGraph : VuMeterBase {
 
 	const RGBA bgColor = RGBA(0, 0, 64);
 	const RGBA ignoredColor = RGBA(0, 130, 0);
-	const RGBA discardedColor = RGBA(0, 135, 0);
-	const RGBA accountedColor = RGBA(0, 200, 0);
+	const RGBA selectedColor = RGBA(0, 200, 0);
+	const RGBA ignoredColorDiscarded = RGBA(0, 90, 0);
+	const RGBA selectedColorDiscarded = RGBA(0, 110, 0);
 	const RGBA boostedColor = RGBA(0, 240, 0);
 	const RGBA deboostedColor = RGBA(0, 100, 0);
 	const RGBA boostedColorInactive = RGBA(0, 160, 0);
@@ -52,7 +53,10 @@ class AnalyserGraph : VuMeterBase {
 			RGBA color;
 			ubyte classification = analyser.levelFilter.sampleClassification(idx);
 			if (classification == LevelFilter.EXPIRED) {
-				color = discardedColor;
+				if (level > analyser.levelFilter.averages[idx])
+					color = selectedColorDiscarded;
+				else
+					color = ignoredColorDiscarded;
 			}
 			else if (classification == LevelFilter.LOW) {
 				color = ignoredColor;
@@ -61,11 +65,11 @@ class AnalyserGraph : VuMeterBase {
 				color = ignoredColor;
 			}
 			else if (classification == LevelFilter.INCLUDED) {
-				color = accountedColor;
+				color = selectedColor;
 			}
 			else {
 				// unclassified, sample from before before starting the analyser
-				color = discardedColor;
+				color = ignoredColorDiscarded;
 			}
 
 			int y = levelToY(level);
