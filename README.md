@@ -19,8 +19,9 @@ Use at your own risk.
 
 # Changelog
 v0.7.2
- - Fixed curve correction. Renamed to volume adjustment.
- - Fix cpu load on idle
+ - Fixed curve correction. Renamed it to volume adjustment.
+ - Fixed high cpu load on idle
+ - Added WMA (weighted moving average) for more responsive averages. Helps with movies.
 
 v0.7.1
  - Fixed limiter overshooting when using attack.
@@ -39,8 +40,9 @@ V0.7
 - Power on/off
 - Soundcard selection
 - Device info and volume reported by the device
-- Attenuation adjustment: Final stage adjustment. At 50% it wil send -3dB to your soundcard instead of -6dB.  
-  Can be used to preserve some of the original dynamics.
+- Volume adjustment: At 50% it wil send -3dB to your soundcard instead of -6dB.  
+  Can be used to retain some of the original dynamics.  
+  This is done in the last stage, so visually you won't see any difference.
 - Presets
 
 ### Level meters
@@ -75,6 +77,7 @@ Displays input signal over time. There are 5 bars per second.
    Increase this to ignore quiet parts.
  - stability: How many green bars to use to compute the average loudness.  
    Decrease this to converge more quickly to a new level.
+ - WMA: faster response of the moving averages.
 
 
 ### Limiter

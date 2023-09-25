@@ -50,6 +50,7 @@ class UI {
 	AnalyserGraph analyserGraph;
 	SpinButton uiAvgLength;
 	SpinButton uiNumLoudnessBars;
+	CheckButton uiEnableWMA;
 
 	CheckButton uiEnableLimiter;
 	SpinButton uiLimiterStart;
@@ -153,7 +154,7 @@ class UI {
 			frame.setSpacing(5);
 
 			frame.add(analyserGraphImg = new Image());
-			analyserGraph = new AnalyserGraph(vleftWidth - 38, 60, worker.analyser);
+			analyserGraph = new AnalyserGraph(vleftWidth - 38, 80, worker.analyser);
 
 			Box hbox = addHButtonBox(frame);
 			uiEnableNormalizer = hbox.withTopLabel("active", new CheckButton("", (CheckButton b){ worker.setOverride(!b.getActive());} ));
@@ -161,11 +162,20 @@ class UI {
 			uiAvgLength = new SpinButton(1, 30, 1);
 			hbox.withTopLabel("selector (s)", uiAvgLength, "Increase to ignore quiet parts");
 			uiAvgLength.setMarginRight(15);
-			uiAvgLength.addOnValueChanged((SpinButton e) { worker.analyser.setAverageLength(cast(int)e.getValue()); });
+			uiAvgLength.addOnValueChanged((SpinButton e) { worker.analyser.setSelectorLength(cast(int)e.getValue()); });
 
 			uiNumLoudnessBars = new SpinButton(1, 30, 1);
 			hbox.withTopLabel("stability (s)", uiNumLoudnessBars, "Decrease to converge more quickly");
 			uiNumLoudnessBars.addOnValueChanged((SpinButton e) { worker.analyser.setNumLoudnessBars(cast(int)e.getValue()); });
+
+			uiEnableWMA = hbox.withTopLabel(
+				"WMA",
+				new CheckButton("", (CheckButton b){
+					worker.analyser.loudnessAnalyzer.useWma = b.getActive();
+					worker.analyser.updateTicks++;
+				} )
+			);
+			uiEnableWMA.setTooltipText("Faster response\n(Weighted Moving Average)");
 		}
 
 
@@ -253,6 +263,7 @@ class UI {
 		uiLimiterRelease.setValue(s.limiterDecay);
 		uiLimiterHold.setValue(s.limiterHold);
 		uiLimiterAttack.setValue(s.limiterAttack);
+		uiEnableWMA.setActive(s.useWma);
 	}
 
 	void onDeviceChanged(ComboBoxText combo) {

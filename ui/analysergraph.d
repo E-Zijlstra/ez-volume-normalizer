@@ -51,20 +51,20 @@ class AnalyserGraph : VuMeterBase {
 			float levelUncorrected = clamp01(analyser.levelHistory.samplesUncorrected[idx]);
 
 			RGBA color;
-			ubyte classification = analyser.levelFilter.sampleClassification(idx);
-			if (classification == LevelFilter.EXPIRED) {
-				if (level > analyser.levelFilter.averages[idx])
+			ubyte classification = analyser.loudnessAnalyzer.sampleClassifications[idx];
+			if (classification == LoudnessAnalyzer.EXPIRED) {
+				if (level > analyser.loudnessAnalyzer.selectorThresholds[idx])
 					color = selectedColorDiscarded;
 				else
 					color = ignoredColorDiscarded;
 			}
-			else if (classification == LevelFilter.LOW) {
+			else if (classification == LoudnessAnalyzer.LOW) {
 				color = ignoredColor;
 			}
-			else if (classification == LevelFilter.HIGH) {	
+			else if (classification == LoudnessAnalyzer.HIGH) {	
 				color = ignoredColor;
 			}
-			else if (classification == LevelFilter.INCLUDED) {
+			else if (classification == LoudnessAnalyzer.INCLUDED) {
 				color = selectedColor;
 			}
 			else {
@@ -79,12 +79,12 @@ class AnalyserGraph : VuMeterBase {
 				// deboosted level
 				if (y < yUncorrected) {
 					paintVerticalLine(x, 0, y, color);
-					paintVerticalLine(x, y+1, yUncorrected, classification == LevelFilter.INCLUDED ? deboostedColor : deboostedColorInactive);
+					paintVerticalLine(x, y+1, yUncorrected, classification == LoudnessAnalyzer.INCLUDED ? deboostedColor : deboostedColorInactive);
 				}
 				// boosted level
 				else if (y > yUncorrected) {
 					paintVerticalLine(x, 0, yUncorrected, color);
-					paintVerticalLine(x, yUncorrected+1, y, classification == LevelFilter.INCLUDED ? boostedColor : boostedColorInactive);
+					paintVerticalLine(x, yUncorrected+1, y, classification == LoudnessAnalyzer.INCLUDED ? boostedColor : boostedColorInactive);
 				}	
 				else {
 					paintVerticalLine(x, 0, y, color);
@@ -94,15 +94,14 @@ class AnalyserGraph : VuMeterBase {
 				info(e.message, "\n mHeight:", mHeight, "; x:", x, "; y:", y, "; yUncorrected: ", yUncorrected, "; level:", level, "; multiplier:", levelMultiplier, "; idx:", idx);
 			}
 
-			paintPixel(x, levelToY(analyser.levelFilter.averages[idx]), averageColor);
-			paintPixel(x, levelToY(analyser.loudnessComputer.history[idx]), loudnessColor);
-
+			paintPixel(x, levelToY(analyser.loudnessAnalyzer.selectorThresholds[idx]), averageColor);
+			paintPixel(x, levelToY(analyser.loudnessAnalyzer.loudnesses[idx]), loudnessColor);
 		}
 	}
 
 	void updateVerticalZoom() {
 		import std.algorithm : min, max;
-		float zoomTarget = 1f / max(0.001, analyser.levelFilter.maxLevel);
+		float zoomTarget = 1f / max(0.001, analyser.loudnessAnalyzer.maxLevel);
 		if (zoomTarget < levelMultiplier) {
 			if (zoomTarget < 1.2) zoomTarget = 1f;
 			levelMultiplier = zoomTarget;
