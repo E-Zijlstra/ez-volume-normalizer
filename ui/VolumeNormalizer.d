@@ -462,14 +462,14 @@ class CurveCorrection : ComboBoxText {
 		vn = vn_;
 
 		super(false);
-		appendText(" 00 %");
-		appendText(" 30 %");
-		appendText(" 60 %");
 		appendText("100 %");
-		appendText("150 %"); 
-		appendText("220 %");
-		appendText("300 %");
-		setTooltipText("Volume slider curve. Boosts lower levels. (% at -20dB)");
+		appendText(" 90 %");
+		appendText(" 80 %");
+		appendText(" 70 %");
+		appendText(" 60 %"); 
+		appendText(" 50 %");
+		appendText(" 40 %");
+		setTooltipText("Volume adjustment");
 		addOnChanged(&onChanged);
 		parent.add(this);
 		setActive(0);

@@ -19,7 +19,7 @@ Use at your own risk.
 
 # Changelog
 v0.7.2
- - Fixed curve correction. 0.7.1 broke it.
+ - Fixed curve correction. Renamed to volume adjustment.
  - Fix cpu load on idle
 
 v0.7.1
@@ -39,15 +39,16 @@ V0.7
 - Power on/off
 - Soundcard selection
 - Device info and volume reported by the device
-- Volume slider curve: Makes the volume slider curve a bit flatter by boosting lower levels. Can be used to preserve some of the original dynamics.
+- Attenuation adjustment: Final stage adjustment. At 50% it wil send -3dB to your soundcard instead of -6dB.  
+  Can be used to preserve some of the original dynamics.
 - Presets
 
 ### Level meters
 - Input signal
-- Output signal (input reduced by normalizer & limiter)
+- Output signal
 
-orange: limiter soft-knee range
-red: fully limited
+Orange: limiter operating range (soft knee)  
+Red: fully limited
 
 ### Target level
 ![controls](doc/target.png)
@@ -61,34 +62,29 @@ These can be fine tuned with the limiter start/width setting.
 ### Normalizer
 ![controls](doc/normalizer.png)
 
-The normalizer controls the volume slider to make the loudness match the target level.
-If not active then you can set the volume yourself.
-
-#### Settings
- - delay: higher values will cause a delay before the normalizer starts ramping down the volume.
- - slowness: higher values will make the normalizer move more slowely to the desired level, but also make it more stable.
-
-For exact details read the next section.
+The normalizer controls the volume setpoint to make the output signal match the target level.  
+If not active then you can set the setpoint yourself. (volume slider on the right)
 
 #### Graphic display
 Displays input signal over time. There are 5 bars per second.
-- Delay (in seconds) is the length of the purple moving average. Samples above the average will be bright green.
-- Slowness is the number of bright bars that are kept, older bars are discarded.
-- The bright bars that are left over are averaged to determine the loudness of what is playing. This is displayed as a yellow line.
+- purple line: A moving average that selects bars, these will be bright green
+- yellow line: The average of the bright green bars, this is the loudness of what is playing.
 
-##### Summary
-- Use higher delay to make the normalizer ignorant of the now.
-- Use higher slowness to make the normalizer nostalgic, put more weight on the past. 
+#### Settings
+ - selector: Lenght the purple average.  
+   Increase this to ignore quiet parts.
+ - stability: How many green bars to use to compute the average loudness.  
+   Decrease this to converge more quickly to a new level.
 
 
 ### Limiter
 ![controls](doc/limiter.png)
 
+Because the normalizer is relatively slow, there is also a limiter.
+
 The limiter starts compressing at C (or the orange area of the level meters) and won't let the signal go above L (fully limited) (red area). You can shift these points with start/width controls.
 
-The meter displays the signal after being processed by the limiter.
-If you want to see red here, you need to disable the limiter ;)
-Under the meter there is thin red bar, this is the reduction (dB) applied by the limiter.
+The thin red bar show the reduction applied by the limiter (in dB).
 
 The limiter does not affect the volume slider, that would make it impossible to disable the normalizer and manually set the volume.
 
@@ -100,6 +96,7 @@ The limiter does not affect the volume slider, that would make it impossible to 
 
 
 ### Power off
+To set the volume before exiting the program:
 - Disable normalizer
 - Set volume to your desired level
 - Toggle the power button, or close the program
