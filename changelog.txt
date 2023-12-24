@@ -1,5 +1,14 @@
+v0.8.0
+ - Added auto reset to respond faster to quiet parts.
+
+v0.7.2
+ - Fixed curve correction. Renamed it to volume adjustment.
+ - Fixed high cpu load on idle
+ - Added WMA (weighted moving average) for more responsive selector.
+
 v0.7.1
  - Fixed limiter overshooting when using attack.
+
 V0.7
  - Various fixes and improvements
  - Limiter tracks normalizer downregulation. This prevents over attenuation when the normalizer reduces volume faster then the limiter releases.

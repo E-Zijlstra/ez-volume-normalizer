@@ -18,20 +18,8 @@ Use at your own risk.
 - Run the executable that you find under releases, or compile the source code yourself. (see below)
 
 # Changelog
-v0.7.2
- - Fixed curve correction. Renamed it to volume adjustment.
- - Fixed high cpu load on idle
- - Added WMA (weighted moving average) for more responsive averages. Helps with movies.
-
-v0.7.1
- - Fixed limiter overshooting when using attack.
-
-V0.7
- - Various fixes and improvements
- - Limiter tracks normalizer downregulation. This prevents over attenuation when the normalizer reduces volume faster then the limiter releases.
- - Increased range to -50dB
- - Presets
- - Limiter attack time
+v0.8.0
+ - Added auto reset to respond faster to quiet parts.
 
 
 # User manual
@@ -73,12 +61,12 @@ Displays input signal over time. There are 5 bars per second.
 - yellow line: The average of the bright green bars, this is the loudness of what is playing.
 
 #### Settings
- - selector: Lenght the purple average.  
+ - selector: Length of the purple average.  
    Increase this to ignore quiet parts.
- - stability: How many green bars to use to compute the average loudness.  
+ - WMA: Makes the selector respond faster to recent changes. (Weighted moving average)
+ - average: How many green bars to use to compute the average loudness.  
    Decrease this to converge more quickly to a new level.
- - WMA: faster response of the moving averages.
-
+ - auto reset: If the selector falls this many dB below then the average will be reset.  
 
 ### Limiter
 ![controls](doc/limiter.png)

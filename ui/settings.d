@@ -10,6 +10,7 @@ struct Settings {
 	int limiterHold;
 	float limiterDecay;
 	bool useWma;
+	float resetDb;
 
 	static const Settings generic = Settings(
 		"Generic",
@@ -18,15 +19,17 @@ struct Settings {
 		0,
 		1000, 6,
 		false,
+		-100,
 	);
 
 	static const Settings movie = Settings(
 		"Movie",
-		7, 8,
-		1.4, 2.1,
+		11, 9,
+		1.4, 2.5,
 		0,
-		1200, 1,
+		1200, 1.2,
 		true,
+		-11,
 	);
 
 	static const Settings conference = Settings(
@@ -36,15 +39,7 @@ struct Settings {
 		200,
 		800, 3,
 		true,
-	);
-
-	static const Settings conference2 = Settings(
-		"Conversation Flat",
-		20, 10,
-		-8.0, 1.3,
-		20,
-		200, 4,
-		true,
+		-100,
 	);
 
 	static const Settings music = Settings(
@@ -54,6 +49,7 @@ struct Settings {
 		100,
 		3000, 3,
 		false,
+		-20,
 	);
 
 	static const Settings*[] all = [

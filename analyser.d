@@ -31,7 +31,6 @@ final class Analyser {
 		loudnessAnalyzer.numLoudnessBars = seconds * samplesPerSecond;
 	}
 
-
 	// --------- output --------- 
 	LevelHistory levelHistory;
 	LoudnessAnalyzer loudnessAnalyzer;
@@ -156,6 +155,10 @@ public:
 	}
 }
 
+float smax(float[] samples, int startIdx, int length) {
+	return samples.cycle(startIdx).take(length).maxElement;
+}
+
 float sma(float[] samples, int startIdx, int length) {
 	real sum = 0;
 	int num = 0;
@@ -199,11 +202,19 @@ final class LoudnessAnalyzer {
 		ubyte[] sampleClassificationsWma;
 		float[] selectorThresholdsWma;
 		float[] loudnessesWma;
+		float _resetDb = -100;
+		float _resetLinear = 0;
+	}
+
+	@property void resetDb(float db) {
+		_resetDb = db;
+		_resetLinear = db.toLinear;
 	}
 
 	ubyte[] sampleClassifications;
 	float[] selectorThresholds;
 	float[] loudnesses;
+	float[] floor;
 
 	enum LOW = 1;
 	enum INCLUDED = 2;
@@ -212,7 +223,7 @@ final class LoudnessAnalyzer {
 
 	// last values
 	float maxLevel;
-	float loudness;
+	float loudness = 0;
 
 	// ----------------
 
@@ -230,33 +241,33 @@ final class LoudnessAnalyzer {
 		}
 	}
 
+	void reset() {
+		expireAll();
+	}
+
+	// ----------------
+
+
 	this(LevelHistory history_) {
 		history = history_;
 		version(sma) {
 			sampleClassificationsSma.length = history.samples.length;
 			selectorThresholdsSma.length = history.samples.length;
-			loudnessesSma.length = history.samples.length;
 			foreach(ref h; selectorThresholdsSma) h = 0f;
+			loudnessesSma.length = history.samples.length;
 			foreach(ref h; loudnessesSma) h = 0f;
 		}
 		version(wma) {
 			sampleClassificationsWma.length = history.samples.length;
 			selectorThresholdsWma.length = history.samples.length;
-			loudnessesWma.length = history.samples.length;
 			foreach(ref h; selectorThresholdsWma) h = 0f;
+			loudnessesWma.length = history.samples.length;
 			foreach(ref h; loudnessesWma) h = 0f;
 		}
 
-		if (_useWma) {
-			sampleClassifications = sampleClassificationsWma;
-			selectorThresholds = selectorThresholdsWma;
-			loudnesses = loudnessesWma;
-		}
-		else {
-			sampleClassifications = sampleClassificationsSma;
-			selectorThresholds = selectorThresholdsSma;
-			loudnesses = loudnessesSma;
-		}
+		useWma(_useWma);
+
+		floor.length = history.samples.length;
 
 	}
 
@@ -265,6 +276,18 @@ final class LoudnessAnalyzer {
 		version(wma) selectorThresholdsWma[history.writtenIdx] = wma(history.samples, idxForLastN(selectorLength), selectorLength) * constantSignalGaurd;
 		version(sma) selectorThresholdsSma[history.writtenIdx] = sma(history.samples, idxForLastN(selectorLength), selectorLength) * constantSignalGaurd;
 
+		// auto reset
+		floor[history.writtenIdx] = loudness * _resetLinear;
+		if (selectorThresholds[history.writtenIdx] < floor[history.writtenIdx]) {
+			if (!selectorBelowFloor) {
+				selectorBelowFloor = true;
+				reset();
+			}
+		}
+		else {
+			selectorBelowFloor = false;
+		}
+
 		version(wma) sampleClassificationsWma[history.writtenIdx] = classifySample(history.samples[history.writtenIdx], selectorThresholdsWma[history.writtenIdx]);
 		version(sma) sampleClassificationsSma[history.writtenIdx] = classifySample(history.samples[history.writtenIdx], selectorThresholdsSma[history.writtenIdx]);
 
@@ -272,10 +295,12 @@ final class LoudnessAnalyzer {
 
 		version(wma) loudnessesWma[history.writtenIdx] = loudnessWMA();
 		version(sma) loudnessesSma[history.writtenIdx] = loudnessSMA();
-		loudness = _useWma ? loudnessesWma[history.writtenIdx] : loudnessesSma[history.writtenIdx];
+		loudness = loudnesses[history.writtenIdx];
 	}
 
 	private:
+
+	bool selectorBelowFloor;
 	
 	// Returns the start index if we want to read the last n samples
 	int idxForLastN(size_t n) {
@@ -316,6 +341,14 @@ final class LoudnessAnalyzer {
 		}
 	}
 
+	void expireAll() {
+		long idx = history.writtenIdx + 1;
+		if (idx >= sampleClassifications.length) idx = 0;
+		foreach(ref c; sampleClassifications.cycle(idx).take(sampleClassifications.length - 4)) {
+			c = EXPIRED;
+		}
+	}
+
 	float loudnessSMA() {
 		int num = 0;
 		real sum = 0;
@@ -330,7 +363,9 @@ final class LoudnessAnalyzer {
 			if (idx >= history.samples.length) idx = 0;
 		}
 
-		if (num == 0) num = 1;
+		if (num == 0) {
+			return smax(history.samples, idxForLastN(selectorLength), selectorLength);
+		}
 		return sum / num;
 	}	
 
@@ -342,14 +377,17 @@ final class LoudnessAnalyzer {
 		foreach(i; 0..history.samples.length) {	
 			if (sampleClassificationsWma[idx] == INCLUDED) {
 				num++;
-				sum += history.samples[idx] * num;
+				sum += history.samples[idx]; // * num;
 			}
 			idx++;
 			if (idx >= history.samples.length) idx = 0;
 		}
 
-		if (num == 0) num = 1;
-		int weight = num * (num+1) / 2;
-		return sum / weight;
-	}	
+		if (num == 0) {
+			return smax(history.samples, idxForLastN(selectorLength), selectorLength);
+		}
+		//int weight = num * (num+1) / 2;
+		//return sum / weight;
+		return sum / num;
+	}
 }

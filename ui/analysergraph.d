@@ -37,6 +37,7 @@ class AnalyserGraph : VuMeterBase {
 
 	const RGBA averageColor = RGBA(200, 0, 200);
 	const RGBA loudnessColor = RGBA(200, 200, 0); // yellow
+	const RGBA floorColor = RGBA(0, 200, 220);
 
 	float levelMultiplier = 1f;
 
@@ -95,6 +96,7 @@ class AnalyserGraph : VuMeterBase {
 			}
 
 			paintPixel(x, levelToY(analyser.loudnessAnalyzer.selectorThresholds[idx]), averageColor);
+			paintPixel(x, levelToY(analyser.loudnessAnalyzer.floor[idx]), floorColor);
 			paintPixel(x, levelToY(analyser.loudnessAnalyzer.loudnesses[idx]), loudnessColor);
 		}
 	}

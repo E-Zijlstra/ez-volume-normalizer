@@ -48,9 +48,11 @@ class UI {
 	CheckButton uiEnableNormalizer;
 	Image analyserGraphImg;
 	AnalyserGraph analyserGraph;
-	SpinButton uiAvgLength;
+	SpinButton uiSelectorLength;
 	SpinButton uiNumLoudnessBars;
 	CheckButton uiEnableWMA;
+	SpinButton uiResetDb;
+	Button uiResetNow;
 
 	CheckButton uiEnableLimiter;
 	SpinButton uiLimiterStart;
@@ -81,7 +83,7 @@ class UI {
 	void open() {
 		worker = new Worker();
 		endpoints = worker.stream.getEndpoints();
-		win = new MainWindow("EZ Volume Normalizer 0.7.2  -  github.com/E-Zijlstra/ez-volume-normalizer");
+		win = new MainWindow("EZ Volume Normalizer 0.8.0  -  github.com/E-Zijlstra/ez-volume-normalizer");
 		win.setDefaultSize(630, 300);
 		win.modifyFont("Calibri", 8);
 
@@ -159,23 +161,32 @@ class UI {
 			Box hbox = addHButtonBox(frame);
 			uiEnableNormalizer = hbox.withTopLabel("active", new CheckButton("", (CheckButton b){ worker.setOverride(!b.getActive());} ));
 
-			uiAvgLength = new SpinButton(1, 30, 1);
-			hbox.withTopLabel("selector (s)", uiAvgLength, "Increase to ignore quiet parts");
-			uiAvgLength.setMarginRight(15);
-			uiAvgLength.addOnValueChanged((SpinButton e) { worker.analyser.setSelectorLength(cast(int)e.getValue()); });
-
-			uiNumLoudnessBars = new SpinButton(1, 30, 1);
-			hbox.withTopLabel("stability (s)", uiNumLoudnessBars, "Decrease to converge more quickly");
-			uiNumLoudnessBars.addOnValueChanged((SpinButton e) { worker.analyser.setNumLoudnessBars(cast(int)e.getValue()); });
+			uiSelectorLength = new SpinButton(1, 30, 1);
+			hbox.withTopLabel("selector (s)", uiSelectorLength, "Increase to ignore quiet parts");
+			uiSelectorLength.addOnValueChanged((SpinButton e) { worker.analyser.setSelectorLength(cast(int)e.getValue()); });
 
 			uiEnableWMA = hbox.withTopLabel(
 				"WMA",
 				new CheckButton("", (CheckButton b){
 					worker.analyser.loudnessAnalyzer.useWma = b.getActive();
 					worker.analyser.updateTicks++;
-				} )
+				} ),
+				"Faster response\n(Weighted Moving Average)"
 			);
-			uiEnableWMA.setTooltipText("Faster response\n(Weighted Moving Average)");
+			uiEnableWMA.getParent().setMarginRight(15);
+
+			uiNumLoudnessBars = new SpinButton(1, 30, 1);
+			hbox.withTopLabel("average (s)", uiNumLoudnessBars, "Decrease to converge more quickly");
+			uiNumLoudnessBars.addOnValueChanged((SpinButton e) { worker.analyser.setNumLoudnessBars(cast(int)e.getValue()); });
+
+
+			uiResetDb = hbox.withTopLabel("auto reset (db)", new SpinButton(-100, 0, 1));
+			uiResetDb.addOnValueChanged( (SpinButton e) { worker.analyser.loudnessAnalyzer.resetDb = e.getValue(); } );
+			uiResetDb.setTooltipText("Reset if selector drops this much below average");
+			uiResetNow = hbox.withTopLabel(
+				"reset",
+				new Button("now", (Button b) { worker.analyser.loudnessAnalyzer.reset(); } )
+			);
 		}
 
 
@@ -232,7 +243,7 @@ class UI {
 		win.showAll();
 
 		// default values
-		uiSettings.setActive(0);
+		uiSettings.setActive(1);
 		uiTargetLevel.setValue(-28);
 		uiEnableLimiter.setActive(true);
 		uiEnableNormalizer.setActive(true);
@@ -256,7 +267,7 @@ class UI {
 	}
 
 	void applySettings(const Settings* s) {
-		uiAvgLength.setValue(s.avgLength);
+		uiSelectorLength.setValue(s.avgLength);
 		uiNumLoudnessBars.setValue(s.numBars);
 		uiLimiterStart.setValue(s.limiterOffset);
 		uiLimiterWidth.setValue(s.limiterWidth);
@@ -264,6 +275,7 @@ class UI {
 		uiLimiterHold.setValue(s.limiterHold);
 		uiLimiterAttack.setValue(s.limiterAttack);
 		uiEnableWMA.setActive(s.useWma);
+		uiResetDb.setValue(s.resetDb);
 	}
 
 	void onDeviceChanged(ComboBoxText combo) {
