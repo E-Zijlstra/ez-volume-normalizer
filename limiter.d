@@ -68,9 +68,9 @@ final class Limiter {
 
 		reduceAttenuationByNormalizerChange();
 
-		real normalizedSig = unlimitedVolume * peak;
-		real limitedSig = softKneeLimit(normalizedSig);
-		real desiredAttn = min(toDb(limitedSig/normalizedSig), 0); // div zero doesn't seem to have an effect. alt: toDb(limitedSig) - toDb(normalizedSig);
+		real normalizedSigDb = (unlimitedVolume * peak).toDb;
+		real limitedSigDb = softKneeLimit(normalizedSigDb);
+		real desiredAttn = min(limitedSigDb-normalizedSigDb, 0);
 		real releaseCeil;
 		if (attackMs == 0) {
 			attenuationDb = min(desiredAttn, attenuationDb);

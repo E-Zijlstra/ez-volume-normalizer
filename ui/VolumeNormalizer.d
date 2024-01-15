@@ -442,13 +442,11 @@ class UI {
 	}
 
 	@property float limitT() {
-		return toLinear(outputTarget + limiterOffset) + limitW;
+		return (outputTarget + limiterOffset) + limitW;
 	}
 
 	@property float limitW() {
-		float start = outputTarget + limiterOffset;
-		float end = start + limiterWidth;
-		return (toLinear(end) - toLinear(start));
+		return limiterWidth;
 	}
 
 	// limiter range on meters 
