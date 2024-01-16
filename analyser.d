@@ -364,7 +364,7 @@ final class LoudnessAnalyzer {
 		}
 
 		if (num == 0) {
-			return smax(history.samples, idxForLastN(selectorLength), selectorLength);
+			return selectorThresholdsSma[history.writtenIdx];
 		}
 		return sum / num;
 	}	
@@ -384,7 +384,7 @@ final class LoudnessAnalyzer {
 		}
 
 		if (num == 0) {
-			return smax(history.samples, idxForLastN(selectorLength), selectorLength);
+			return selectorThresholdsWma[history.writtenIdx];
 		}
 		//int weight = num * (num+1) / 2;
 		//return sum / weight;
