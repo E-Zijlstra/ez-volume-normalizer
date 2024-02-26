@@ -16,6 +16,7 @@ final class Limiter {
 	// settings
 	int ticksPerSecond;
 	bool enabled;
+	bool hardKnee;
 	float releasePerSecond = 0.2;
 	float limitT = 0.5;
 	float limitW = 0.1;
@@ -69,7 +70,7 @@ final class Limiter {
 		reduceAttenuationByNormalizerChange();
 
 		real normalizedSigDb = (unlimitedVolume * peak).toDb;
-		real limitedSigDb = softKneeLimit(normalizedSigDb);
+		real limitedSigDb = hardKnee ? hardKneeLimit(normalizedSigDb) : softKneeLimit(normalizedSigDb);
 		real desiredAttn = min(limitedSigDb-normalizedSigDb, 0);
 		real releaseCeil;
 		if (attackMs == 0) {
@@ -125,6 +126,17 @@ final class Limiter {
 		}
 		return s2;
 	}
+
+	real hardKneeLimit(real signal) {
+		real s2;
+		if (signal <= limitT-limitW) s2 = signal;
+		else if (signal >= limitT+limitW) s2 = limitT;
+		else {
+			s2= 0.5 * (limitT - limitW + signal);
+		}
+		return s2;
+	}
+
 
 
 }

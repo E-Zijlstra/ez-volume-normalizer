@@ -3,30 +3,29 @@ module psychoacoustics;
 
 import std.math;
 import std.algorithm;
+import std.datetime;
 import util;
+import lookback;
 
 final class PsychoAcoustics {
 	private {
-		BandSplitter _splitter;
+		HighPassLevelMeter _highPassMeter;
 		int _sampleRate = 48000;
-		float _time = 1;
+		float _windowSeconds = 1;
 		bool _paramsChanged = true;
 	}
 
-	float lowGain = -8;
-	const gainOffset = 0;
-	const frequency = 1000;
+	float lowGain = -6;
+	const frequency = 700;
 	float correction;
 	
 	// experimental determinated by checking correctionlevel with a sine tone at given frequency
-	const freqOffset = 300;
+	const freqOffset = 0;//300;
 
-	@property float perception() {
-		return (correction/-lowGain) + 1f;
-	}
+	float lowLevel = 0, highLevel = 0;
 
 	this() {
-		_splitter = new BandSplitter;
+		_highPassMeter = new HighPassLevelMeter();
 		setSampleRate(_sampleRate);
 	}
 
@@ -35,34 +34,26 @@ final class PsychoAcoustics {
 		_paramsChanged = true;
 	}
 
-	void setTime(float time_) {
-		_time = time_;
+	void setTime(float seconds) {
+		_windowSeconds = seconds;
 		_paramsChanged = true;
 	}
 
-	@property float time() { return _time; }
+	@property float time() { return _windowSeconds; }
 
 	void process(float[] data, float rawDb) {
 		if (_paramsChanged) {
-			_splitter.setParams(frequency+freqOffset, _sampleRate, _time);
+			_highPassMeter.setParams(frequency+freqOffset, _sampleRate, _windowSeconds);
 			_paramsChanged = false;
 		}
 
-		_splitter.processStereo(data);
-		float lowLevel = dataToPeak(_splitter.lowpass).toDb;
-		float highLevel = dataToPeak(_splitter.highpass).toDb;
-		float combinedLevel = max(lowLevel, highLevel);
+		_highPassMeter.processInput(data);
+		highLevel = _highPassMeter.filteredLookback.avgValue.toDb;
+		float level = _highPassMeter.inputLookback.avgValue.toDb;
+		lowLevel = level + lowGain;
+		float adjustedLevel = max(lowLevel, highLevel);
 
-		float adjustedLevel = max(lowLevel + lowGain, highLevel);
-		correction = adjustedLevel - combinedLevel + gainOffset;
-		version(disable) 
-			info("low: ", lowLevel,
-			 " high: ", highLevel,
-			 " adjusted: ", adjustedLevel,
-			 " correction: ", correction,
-			 " combined: ", combinedLevel,
-			 " rawDb: ", rawDb
-		);
+		correction = (adjustedLevel - level);
 	}
 
 	float dataToPeak(float[] data) {
@@ -74,6 +65,49 @@ final class PsychoAcoustics {
 	}
 
 }
+
+
+final class HighPassLevelMeter {
+private:
+	HighPassFilter _leftFilter;
+	HighPassFilter _rightFilter;
+	float _sampleRate;
+	float _frequency;
+
+public:
+	Lookback!(true,64) filteredLookback;
+	Lookback!(true, 64) inputLookback;
+
+	void setParams(float frequency, float sampleRate, float bufferSizeSeconds) {
+		_frequency = frequency;
+		_sampleRate = sampleRate;
+		_leftFilter.setParams(frequency, sampleRate);
+		_rightFilter.setParams(frequency, sampleRate);
+		filteredLookback.totalMs = cast(uint) (bufferSizeSeconds * 1000);
+		inputLookback.totalMs = cast(uint) (bufferSizeSeconds * 1000);
+	}
+
+	void processInput(float[] data) {
+		auto now = MonoTime.currTime;
+		size_t len = data.length & ~1;
+		if (len == 0) return;
+		float* p = data.ptr;
+		float* end = p + len;
+		float maxInput = 0;
+		float maxFiltered = 0;
+		do {
+			maxInput = max(maxInput, max(abs(*p), abs(*(p+1))));
+			float leftFiltered = _leftFilter.process(*p);
+			float rightFiltered = _rightFilter.process(*(p+1));
+			maxFiltered = max(maxFiltered, max(abs(leftFiltered), abs(rightFiltered)));
+			p += 2;
+		}while(p < end);
+
+		inputLookback.put(now, maxInput);
+		filteredLookback.put(now, maxFiltered);
+	}
+}
+
 
 
 final class BandSplitter {

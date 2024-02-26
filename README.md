@@ -81,9 +81,13 @@ The limiter does not affect the volume slider, that would make it impossible to 
 
 #### Settings
 - start/width: operating range, relative to the target level.
-- attack: how quickly to reduce the volume when the signal goes above the start level
-- hold
+- knee type: Hard has a linear transition, if the input is halfway in the orange range then the compression will also be 50%.  
+             Soft compresses more in the upper part of the range.
+- hold: Time to wait before releasing the volume reduction
 - release: how quickly to reduce the volume reduction
+
+purple: hard, red: soft, green: set width to minimum  
+![knee](doc/knee.png)
 
 
 ### Power off

@@ -60,6 +60,12 @@ T toLinear(T : float)(T t) {
 	return cpow(10, t / 20);
 }
 
+// remaps values minDb..0 to 0..1
+float remapDb(float db, float minDb) {
+	return clamp01((minDb - db) / minDb);
+}
+
+
 unittest {
 	assert(toDb(0.0) == -100);
 	assert(toDb(1.0) == 0);

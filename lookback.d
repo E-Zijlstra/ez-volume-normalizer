@@ -44,16 +44,16 @@ struct SumLookback {
 	}
 }
 
-struct Lookback(bool useMax = true) {
+struct Lookback(bool useMax = true, int NUMSLOTS = 16) {
 
 	uint _totalMs = 100;
 
 	private {
-		float[8] slots;
+		float[NUMSLOTS] slots;
 		int writeIdx = 0;
 		MonoTime nextWriteAt = MonoTime.zero;
-		float mMaxValue = 0;
-		float mMinValue = 0;
+		float mValue = 0;
+		float mAvgValue = 0;
 		Duration slotDuration = dur!"msecs"(100);
 	}
 
@@ -65,12 +65,8 @@ struct Lookback(bool useMax = true) {
 	@property uint totalMs() { return _totalMs; }
 
 	void put(MonoTime now, float value) {
-		static if (useMax)
-			float acc = slots[writeIdx] = max(slots[writeIdx], value);
-		else
-			float acc = slots[writeIdx] = min(slots[writeIdx], value);
-
 		if (now >= nextWriteAt) {
+			// Write value into next slot
 			int slotsWritten = 0;
 			while (now >= nextWriteAt && slotsWritten < slots.length) {
 				slotsWritten++;
@@ -80,30 +76,41 @@ struct Lookback(bool useMax = true) {
 				nextWriteAt = nextWriteAt + slotDuration;
 			}
 
+			// nextWriteAt would be incorrect if more time passed than the totalMs
 			if (slotsWritten == slots.length) {
 				nextWriteAt = now + slotDuration;
 			}
 
-			if (useMax)
-				mMaxValue = slots[].maxElement;
-			else
-				mMinValue = slots[].minElement;
+			static if (useMax) {
+				mValue = slots[].maxElement;
+			} else {
+				mValue = slots[].minElement;
+			}
+			mAvgValue = slots[].sum / slots.length;
 		}
 		else {
-			static if (useMax)
-				mMaxValue = max(mMaxValue, value);
-			else
-				mMinValue = min(mMinValue, value);
+			// update last written slot
+			static if (useMax) {
+				slots[writeIdx] = max(slots[writeIdx], value);
+				mValue = max(mValue, value);
+			} else {
+				slots[writeIdx] = min(slots[writeIdx], value);
+				mValue = min(mValue, value);
+			}
 		}
 	}
 
 	static if (useMax) {
 		@property float maxValue() {
-			return mMaxValue;
+			return mValue;
 		}
 	} else {
 		@property float minValue() {
-			return mMinValue;
+			return mValue;
 		}
+	}
+
+	@property float avgValue() {
+		return mAvgValue;
 	}
 }

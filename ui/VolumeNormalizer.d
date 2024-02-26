@@ -9,10 +9,11 @@ import ui.helpers;
 
 import util;
 import worker;
+import streamlistener;
 import ui.vumeter;
 import ui.analysergraph;
-import streamlistener;
 import ui.settings;
+import ui.psycho;
 
 import std.string;
 
@@ -59,7 +60,8 @@ class UI {
 	SpinButton uiLimiterWidth;
 	SpinButton uiLimiterRelease;
 	SpinButton uiLimiterHold;
-	SpinButton uiLimiterAttack;
+	//SpinButton uiLimiterAttack;
+	ComboBoxText uiLimiterType;
 	LevelBar uiLimiterAttn;
 
 	Label uiMasterDecibel;
@@ -204,17 +206,21 @@ class UI {
 			Box vbox = new Box(GtkOrientation.VERTICAL, 0);
 			hbox0.add(vbox);
 			Box hbox1 = addHButtonBox(vbox);
-			Box hbox2 = addHButtonBox(vbox);
 
 			uiLimiterStart = withTopLabel(hbox1, "start offset (dB)", new SpinButton(-24, 24, 0.1));
 			uiLimiterWidth = withTopLabel(hbox1, "width (dB)", new SpinButton(0.1, 24, 0.1));
-			uiLimiterAttack = withTopLabel(hbox1, "attack (ms)", new SpinButton(0, 500, 5));
+			//uiLimiterAttack = withTopLabel(hbox1, "attack (ms)", new SpinButton(0, 500, 5));
+			uiLimiterType = withTopLabel(hbox1, "knee type", new ComboBoxText(false));
+			foreach(ref txt; ["soft", "hard"]) {
+				uiLimiterType.appendText(txt);
+			}
 			uiLimiterHold = withTopLabel(hbox1, "hold (ms)", new SpinButton(0, 10000, 10));
 			uiLimiterRelease = withTopLabel(hbox1, "release (dB/s)", new SpinButton(0.5, 80, 0.25));
 
 			uiLimiterStart.addOnValueChanged( (SpinButton e) { setLimiterParameters(); } );
 			uiLimiterWidth.addOnValueChanged( (SpinButton e) { setLimiterParameters(); } );
-			uiLimiterAttack.addOnValueChanged( (SpinButton e) { setLimiterParameters(); } );
+			//uiLimiterAttack.addOnValueChanged( (SpinButton e) { setLimiterParameters(); } );
+			uiLimiterType.addOnChanged( (ComboBoxText e) { setLimiterParameters(); } );
 			uiLimiterRelease.addOnValueChanged( (SpinButton e) { setLimiterParameters(); } );
 			uiLimiterHold.addOnValueChanged( (SpinButton e) { setLimiterParameters(); } );
 			uiLimiterStart.setDigits(2);
@@ -247,6 +253,7 @@ class UI {
 		uiTargetLevel.setValue(-28);
 		uiEnableLimiter.setActive(true);
 		uiEnableNormalizer.setActive(true);
+		uiLimiterType.setActive(0);
 
 		uiContextMenu = new ContextMenu(this, win);
 		uiStats = new Stats(this);
@@ -273,7 +280,7 @@ class UI {
 		uiLimiterWidth.setValue(s.limiterWidth);
 		uiLimiterRelease.setValue(s.limiterDecay);
 		uiLimiterHold.setValue(s.limiterHold);
-		uiLimiterAttack.setValue(s.limiterAttack);
+//		uiLimiterAttack.setValue(s.limiterAttack);
 		uiEnableWMA.setActive(s.useWma);
 		uiResetDb.setValue(s.resetDb);
 	}
@@ -295,7 +302,8 @@ class UI {
 				l.holdTimeMs = cast(uint) uiLimiterHold.getValue();
 				l.limitT = limitT();
 				l.limitW = limitW();
-				l.attackMs = uiLimiterAttack.getValue();
+				//l.attackMs = uiLimiterAttack.getValue();
+				l.hardKnee = uiLimiterType.getActive() == 1;
 			});
 			showLimiterMarks();
 		} catch(Exception e) {}
@@ -501,78 +509,6 @@ class CurveCorrection : ComboBoxText {
 	void onChanged(ComboBoxText ct) {
 		vn.worker.lowVolumeBoost = dbMultipliers[ct.getActive()].to!float;
 		vn.worker.setEndpointVolumeForced();
-	}
-}
-
-class PsychoAccoustics {
-	private {
-		UI vn;
-		CheckButton uiEnable;
-		LevelBar uiAdjustmentLevel;
-		SpinButton uiTime;
-
-		const levelCss = "
-			levelbar block.full {
-			background-color: red;
-			border-style: solid;
-			border-color: black;
-			border-width: 1px;
-			}
-			levelbar block.high {
-			background-color: lime;
-			border-style: solid;
-			border-color: black;
-			border-width: 1px;
-			}
-			levelbar block.low {
-			background-color: lime;
-			border-style: solid;
-			border-color: black;
-			border-width: 1px;
-			}
-			";
-	}
-
-	@property bool enabled() { return uiEnable.getActive(); }
-	@property Worker worker() { return vn.worker; }
-
-	void updateDisplay() {
-		if (!enabled) return;
-
-		float perception = worker.psychoAcoustics.perception;
-		uiAdjustmentLevel.setValue(perception);
-	}
-
-	this(UI vn_, Box parent) {
-		vn = vn_;
-
-		Box frame = parent.addFrame("low frequency boost").addHButtonBox();
-		frame.setSizeRequest(200,0);
-		uiAdjustmentLevel = levelMeter(5, false, false);
-		uiAdjustmentLevel.setInverted(true);
-		uiAdjustmentLevel.setMinValue(0);
-		uiAdjustmentLevel.setMaxValue(1);
-		uiAdjustmentLevel.setMarginTop(0);
-		uiAdjustmentLevel.setMarginBottom(0);
-		uiAdjustmentLevel.setVexpand(true);
-		uiAdjustmentLevel.setValue(0.5);
-		uiAdjustmentLevel.addOffsetValue(GTK_LEVEL_BAR_OFFSET_LOW, 0.0);
-		uiAdjustmentLevel.addOffsetValue(GTK_LEVEL_BAR_OFFSET_HIGH, 0.5);
-		uiAdjustmentLevel.addOffsetValue(GTK_LEVEL_BAR_OFFSET_FULL, 1);
-		uiAdjustmentLevel.addStyle(levelCss);
-		uiEnable = withTopLabel(frame, "active", new CheckButton(""));
-		uiEnable.addOnToggled( (btn) {
-			worker.psychoAcousticsEnabled = btn.getActive();
-			worker.stream.highQuality = btn.getActive();
-			uiAdjustmentLevel.setValue(0.5);
-		});
-		uiTime = withTopLabel(frame, "window (ms)", new SpinButton(50, 1000, 10));
-		uiTime.addOnValueChanged((SpinButton btn) {
-			worker.psychoAcoustics.setTime(btn.getValue()/1000.0);
-		});
-		uiTime.setValue(300f);
-
-		frame.add(uiAdjustmentLevel);
 	}
 }
 

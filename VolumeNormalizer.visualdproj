@@ -508,6 +508,7 @@
   <Folder name="ui">
    <File path="ui\analysergraph.d" />
    <File path="ui\helpers.d" />
+   <File path="ui\psycho.d" />
    <File path="ui\settings.d" />
    <File path="ui\VolumeNormalizer.d" />
    <File path="ui\vumeter.d" />
